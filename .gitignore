@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Streamlit
+.streamlit/
+
+# Env / secrets
+.env
+
+# Virtual environments
+k-scout-env-py39/
+venv/
+.venv/
+
+# Large Raw Data (GitHub 50MB limit)
+data/raw/raw_data.csv
+data/raw/*.xlsx
+
+# Outputs (generated)
+output/reports/
+test.png
+
+# OS
+.DS_Store
+

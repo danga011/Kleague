@@ -1,0 +1,13 @@
+pandas
+numpy
+scikit-learn
+xgboost
+statsbombpy
+kloppy
+streamlit
+plotly
+reportlab
+kaleido
+openai
+altair
+python-dotenv
