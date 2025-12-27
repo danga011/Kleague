@@ -10,7 +10,7 @@
 ## 2. 주요 기능
 - **전술 적합도 점수(HSI)**: T-Fit(전술), P-Fit(환경), C-Fit(문화) 지표를 통한 다각도 분석
 - **실시간 팀 매칭**: 구단 선택 시 해당 구단의 포지션별 전술 템플릿과 자동 비교
-- **AI 심층 스카우팅 보고서**: GPT-4o-mini 기반의 데이터 근거형 전문 리포트 생성
+- **AI 심층 스카우팅 보고서**: Google Gemini 1.5 Flash 기반 Deep Research 스타일 전문 리포트 생성
 - **PDF 결과서 내보내기**: 레이더 차트와 AI 분석이 포함된 공식 보고서 출력
 
 ---
@@ -51,10 +51,12 @@
    ```
 
 2. **환경 변수 설정**
-   `.env` 파일을 생성하고 OpenAI API Key를 입력합니다.
+   `.env` 파일을 생성하고 Gemini API Key를 입력합니다.
    ```
-   OPENAI_API_KEY=your_api_key_here
+   GEMINI_API_KEY=your_gemini_api_key_here
    ```
+   
+   API 키 발급: https://makersuite.google.com/app/apikey
 
 3. **애플리케이션 실행**
    ```bash

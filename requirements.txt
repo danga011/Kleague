@@ -1,13 +1,9 @@
+streamlit
 pandas
 numpy
-scikit-learn
-xgboost
-statsbombpy
-kloppy
-streamlit
 plotly
 reportlab
-kaleido
-openai
-altair
+kaleido==0.2.1
 python-dotenv
+google-generativeai
+scipy

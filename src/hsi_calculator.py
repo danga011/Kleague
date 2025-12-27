@@ -1,154 +1,238 @@
-
 import os
-
+import json
+import logging
 import numpy as np
 import pandas as pd
 
+# ============================================================
+# 로깅 시스템 설정
+# ============================================================
+if not os.path.exists("logs"):
+    os.makedirs("logs")
 
-def calculate_hsi_metrics(
-    raw_data_path,
-    match_info_path,
-    output_dir,
-):
-    """
-    HSI 지표를 계산하여 CSV 파일로 저장합니다.
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("logs/hsi_pipeline.log"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
-    - T-fit: 전술 적합도(전방 수비액션) + 파울/카드 기반 클린플레이(반칙 리스크) 정보를 반영해 고도화
-    - P-fit: 환경 적합도(혹서기 유지율)
-    - C-fit: 문화 적합도(도시 기반)는 팀(분석도시)에 따라 달라지는 값이므로,
-             앱(app.py)에서 WVS 도시 벡터/매핑을 통해 **동적으로 계산**합니다.
-             이 파일에서는 placeholder(중립값)를 저장합니다.
+
+def validate_raw_data(df: pd.DataFrame) -> bool:
+    """입력 데이터 검증"""
+    required_cols = ['player_id', 'player_name_ko', 'game_id', 'type_name', 'start_x']
+    missing = set(required_cols) - set(df.columns)
+    
+    if missing:
+        logger.error(f"필수 컬럼 누락: {missing}")
+        raise ValueError(f"필수 컬럼 누락: {missing}")
+    
+    null_counts = df[required_cols].isnull().sum()
+    if null_counts.any():
+        logger.warning(f"결측치 발견:\n{null_counts[null_counts > 0]}")
+    
+    logger.info("데이터 검증 통과")
+    return True
+
+
+def bayesian_smoothing(raw_values, n_samples, global_mean, k=5.0):
+    """베이지안 스무딩으로 소표본 선수 안정화"""
+    return (raw_values * n_samples + global_mean * k) / (n_samples + k)
+
+
+def to_percentile(series):
+    """원본 점수를 백분위 점수(0-100)로 변환"""
+    return series.rank(pct=True) * 100.0
+
+
+def calculate_hsi_metrics(raw_data_path, match_info_path, output_dir):
     """
+    통계적으로 고도화된 HSI 지표 계산
+    - 베이지안 스무딩: 소표본 선수 안정화
+    - 퍼센타일 변환: 리그 내 상대평가
+    - 상세 인사이트: AI가 활용할 정성적 데이터 생성
+    """
+    logger.info("=" * 60)
+    logger.info("HSI 고도화 파이프라인 시작")
+    logger.info("=" * 60)
+    
+    # 1. 데이터 로딩 및 검증
     try:
-        print("Reading raw data and match info...")
+        logger.info("데이터 로딩 중...")
         raw_df = pd.read_csv(raw_data_path)
         match_df = pd.read_csv(match_info_path)
+        validate_raw_data(raw_df)
+        logger.info(f"데이터 로드 완료: {len(raw_df)} 이벤트, {raw_df['player_id'].nunique()} 선수")
     except FileNotFoundError as e:
-        print(f"Error: Could not find data file - {e}")
+        logger.error(f"파일을 찾을 수 없습니다: {e}")
         return
-
-    # 선수 목록 사전 생성
+    except Exception as e:
+        logger.error(f"데이터 로드 실패: {e}")
+        return
+    
+    # 선수 목록 및 경기수
     players = raw_df[['player_id', 'player_name_ko']].drop_duplicates()
-
-    # 경기 수(출전량 프록시) - minutes 데이터가 없으므로 최소한 경기수로 정규화
-    games_played_total = raw_df.groupby("player_id")["game_id"].nunique().rename("games_played_total")
+    games_played = raw_df.groupby("player_id")["game_id"].nunique().rename("games_played")
     
-    # --- 1. T-fit (K-Pressure) 계산 ---
-    print("Calculating T-fit (K-Pressure + CleanPlay)...")
+    # 2. T-Fit 계산 (전술 적합도 + 베이지안 스무딩)
+    logger.info("T-Fit 계산 중 (베이지안 스무딩 적용)...")
     defensive_actions = ['Duel', 'Tackle', 'Interception']
-    pressure_events = raw_df[
-        (raw_df['type_name'].isin(defensive_actions)) & 
-        (raw_df['start_x'] > 60)
-    ]
-    # 누적 카운트는 출전시간(경기수)에 강하게 종속 → 경기당 평균으로 정규화
-    t_fit_count = pressure_events.groupby("player_id").size().rename("t_fit_count")
-    with np.errstate(divide="ignore", invalid="ignore"):
-        t_fit_per_game = (t_fit_count / games_played_total).replace([np.inf, -np.inf], 0).fillna(0).rename("t_fit_raw")
-    t_fit_raw = t_fit_per_game.reset_index()
-
-    # --- 2. P-fit (Summer Retention) 계산 ---
-    print("Calculating P-fit (Summer Retention)...")
-    merged_df = pd.merge(raw_df, match_df[['game_id', 'game_date']], on='game_id')
-    merged_df['game_date'] = pd.to_datetime(merged_df['game_date'])
-    merged_df['month'] = merged_df['game_date'].dt.month
+    def_events = raw_df[raw_df['type_name'].isin(defensive_actions)]
     
-    merged_df['season'] = np.where(merged_df['month'].isin([6, 7, 8]), 'Summer', 'Rest')
+    # 전방 압박 비중 (x > 60)
+    high_press_counts = def_events[def_events['start_x'] > 60].groupby("player_id").size()
+    total_def_counts = def_events.groupby("player_id").size()
+    press_ratio = (high_press_counts / total_def_counts).fillna(0)
     
-    # 시즌별 경기 수 계산
-    games_per_season = merged_df.groupby(['player_id', 'season'])['game_id'].nunique().unstack(fill_value=0)
-    # 시즌별 이벤트 수 계산
-    events_per_season = merged_df.groupby(['player_id', 'season']).size().unstack(fill_value=0)
+    # 수비 스타일 (가로채기 vs 태클 비율)
+    interceptions = raw_df[raw_df['type_name'] == 'Interception'].groupby("player_id").size()
+    tackles = raw_df[raw_df['type_name'] == 'Tackle'].groupby("player_id").size()
+    style_ratio = (interceptions / (tackles + 1e-6)).fillna(0)
     
-    # 0으로 나누는 것을 방지 + 소표본(경기수 적음) 안정화
-    # - raw ratio = (여름 경기당 이벤트) / (비여름 경기당 이벤트)
-    # - reliability = sqrt(g_summer * g_rest) / (sqrt(...) + k_games)
-    g_s = games_per_season.get("Summer", pd.Series(dtype=float))
-    g_r = games_per_season.get("Rest", pd.Series(dtype=float))
-    e_s = events_per_season.get("Summer", pd.Series(dtype=float))
-    e_r = events_per_season.get("Rest", pd.Series(dtype=float))
-
-    with np.errstate(divide="ignore", invalid="ignore"):
-        avg_s = (e_s / g_s).replace([np.inf, -np.inf], np.nan)
-        avg_r = (e_r / g_r).replace([np.inf, -np.inf], np.nan)
-        raw_ratio = (avg_s / avg_r).replace([np.inf, -np.inf], np.nan)
-
-    # 결측(한쪽 시즌 경기 0 등)은 중립 1.0으로
-    raw_ratio = raw_ratio.fillna(1.0)
-
-    # 소표본 보정(둘 중 하나 시즌이 0이면 n_eff=0 → 완전 중립)
-    k_games = 6.0
-    with np.errstate(divide="ignore", invalid="ignore"):
-        n_eff = np.sqrt(g_s.astype(float) * g_r.astype(float))
-        reliability = (n_eff / (n_eff + k_games)).replace([np.inf, -np.inf], 0).fillna(0)
-
-    p_fit = (reliability * raw_ratio) + ((1.0 - reliability) * 1.0)
-    # 과도한 이상치는 캡(공모전용 안정화)
-    p_fit = p_fit.clip(lower=0.5, upper=2.0)
-
-    p_fit_scores = pd.DataFrame(
-        {
-            "player_id": p_fit.index,
-            "p_fit_score": p_fit.values,
-            "games_summer": g_s.reindex(p_fit.index).fillna(0).astype(int).values,
-            "games_rest": g_r.reindex(p_fit.index).fillna(0).astype(int).values,
-        }
+    # 베이지안 스무딩 적용
+    league_avg_t = high_press_counts.sum() / games_played.sum()
+    k_t = 5.0  # Prior strength
+    
+    t_fit_raw = bayesian_smoothing(
+        high_press_counts.reindex(games_played.index).fillna(0),
+        games_played,
+        league_avg_t,
+        k=k_t
     )
-
-    # --- 3. 파울/카드 기반 클린플레이(반칙 리스크) 점수 계산 -> T-fit에 흡수 ---
-    print("Calculating clean-play factor (foul/card) to be merged into T-fit...")
+    
+    # 클린플레이 반영
     fouls = raw_df[raw_df['type_name'] == 'Foul'].groupby('player_id').size()
     cards = raw_df[raw_df['type_name'].isin(['Yellow Card', 'Red Card', 'Yellow/Red Card'])].groupby('player_id').size()
+    penalty_per_game = ((fouls.reindex(games_played.index).fillna(0) + 
+                        cards.reindex(games_played.index).fillna(0) * 2) / games_played).fillna(0)
     
-    clean_play_df = pd.DataFrame({
-        'fouls': fouls,
-        'cards': cards
-    }).fillna(0)
-
-    # 경기당 파울/카드 레이트 기반(변별력↑): penalty_per_game = (fouls + 2*cards) / games
-    clean_play_df = clean_play_df.join(games_played_total, how="outer").fillna(0)
-    clean_play_df["penalty_events"] = clean_play_df["fouls"] + clean_play_df["cards"] * 2
+    cp_scale = penalty_per_game.quantile(0.75) if penalty_per_game.quantile(0.75) > 0 else 1.0
+    clean_play_score = 1.0 / (1.0 + (penalty_per_game / cp_scale))
     
-    with np.errstate(divide="ignore", invalid="ignore"):
-        penalty_per_game = (clean_play_df["penalty_events"] / clean_play_df["games_played_total"]).replace([np.inf, -np.inf], np.nan)
-    penalty_per_game = penalty_per_game.fillna(0)
-
-    # 스케일은 분포 기반(상위 25% 지점)으로 자동 설정 → 리그마다 튜닝 없이 동작
-    try:
-        scale = float(np.nanpercentile(penalty_per_game.values, 75))
-    except Exception:
-        scale = 2.0
-    if not scale or scale <= 0:
-        scale = 2.0
-
-    # 1에 가까울수록 클린플레이(파울/카드 리스크 낮음) (0~1)
-    clean_play_df["clean_play_score"] = (1.0 / (1.0 + (penalty_per_game / scale))).astype(float)
-    clean_play_df["clean_play_score"] = clean_play_df["clean_play_score"].clip(lower=0.0, upper=1.0).fillna(0.0)
-    clean_play_scores = clean_play_df[["clean_play_score"]].reset_index()
-
-    # T-fit 고도화: 전방 압박(원래 T-fit)에 클린플레이 점수 반영
-    # - 클린플레이 점수가 낮을수록(파울/카드 리스크 높음) 동일 압박량이라도 전술 실행 품질이 낮다고 가정
-    t_fit_enhanced = pd.merge(t_fit_raw, clean_play_scores, on="player_id", how="right").fillna({"t_fit_raw": 0})
-    t_fit_enhanced["t_fit_score"] = t_fit_enhanced["t_fit_raw"] * (0.7 + 0.3 * t_fit_enhanced["clean_play_score"])
-    t_fit_scores = t_fit_enhanced[["player_id", "t_fit_score", "clean_play_score"]]
-
-    # --- 4. C-fit placeholder ---
-    print("Setting placeholder C-fit score (computed dynamically in app)...")
-    c_fit_scores = players[["player_id"]].copy()
-    c_fit_scores["c_fit_score"] = 0.85
-
-    # --- 5. 모든 지표 병합 ---
-    print("Merging all HSI metrics...")
-    hsi_df = pd.merge(players, t_fit_scores, on='player_id', how='left')
-    hsi_df = pd.merge(hsi_df, p_fit_scores, on='player_id', how='left')
-    hsi_df = pd.merge(hsi_df, c_fit_scores, on='player_id', how='left')
-    # p_fit_score 결측치는 1(중립)로, 나머지는 0으로
-    hsi_df['p_fit_score'] = hsi_df['p_fit_score'].fillna(1.0)
-    hsi_df = hsi_df.fillna(0)
-
-    # --- 6. 파일 저장 ---
+    t_fit_final_raw = t_fit_raw * (0.7 + 0.3 * clean_play_score)
+    
+    logger.info(f"  리그 평균 T-Fit: {league_avg_t:.2f}, 베이지안 k={k_t}")
+    
+    # 3. P-Fit 계산 (혹서기 적응 + 베이지안 스무딩)
+    logger.info("P-Fit 계산 중 (여름철 활동량 분석)...")
+    merged_df = pd.merge(raw_df, match_df[['game_id', 'game_date']], on='game_id')
+    merged_df['game_date'] = pd.to_datetime(merged_df['game_date'])
+    merged_df['is_summer'] = merged_df['game_date'].dt.month.isin([6, 7, 8])
+    
+    # 여름/평시 경기당 이벤트
+    summer_games = merged_df[merged_df['is_summer']].groupby('player_id')['game_id'].nunique()
+    rest_games = merged_df[~merged_df['is_summer']].groupby('player_id')['game_id'].nunique()
+    
+    summer_events = merged_df[merged_df['is_summer']].groupby('player_id').size()
+    rest_events = merged_df[~merged_df['is_summer']].groupby('player_id').size()
+    
+    summer_per_game = (summer_events / summer_games).fillna(0)
+    rest_per_game = (rest_events / rest_games).fillna(0)
+    
+    # 여름철 유지율
+    p_retention = (summer_per_game / (rest_per_game + 1e-6)).fillna(1.0)
+    
+    # 베이지안 스무딩 (여름철 경기수 기반)
+    league_avg_p = 1.0  # 중립 = 유지율 100%
+    k_p = 3.0
+    
+    p_fit_raw = bayesian_smoothing(
+        p_retention.reindex(games_played.index).fillna(1.0),
+        summer_games.reindex(games_played.index).fillna(0),
+        league_avg_p,
+        k=k_p
+    )
+    
+    logger.info(f"  평균 여름철 유지율: {p_retention.mean():.2%}, 베이지안 k={k_p}")
+    
+    # 4. 퍼센타일 변환 (상대평가)
+    logger.info("퍼센타일 변환 중 (리그 내 상대평가)...")
+    
+    hsi_results = players.copy()
+    hsi_results = hsi_results.merge(games_played, on="player_id", how="left")
+    
+    hsi_results['t_fit_score'] = to_percentile(t_fit_final_raw).reindex(hsi_results['player_id']).fillna(50.0).values
+    hsi_results['p_fit_score'] = to_percentile(p_fit_raw).reindex(hsi_results['player_id']).fillna(50.0).values
+    hsi_results['clean_play_score'] = clean_play_score.reindex(hsi_results['player_id']).fillna(0.8).values
+    hsi_results['c_fit_score'] = 50.0  # Placeholder (앱에서 동적 계산)
+    
+    logger.info(f"  T-Fit 범위: {hsi_results['t_fit_score'].min():.1f} ~ {hsi_results['t_fit_score'].max():.1f}")
+    logger.info(f"  P-Fit 범위: {hsi_results['p_fit_score'].min():.1f} ~ {hsi_results['p_fit_score'].max():.1f}")
+    
+    # 5. AI용 상세 인사이트 생성
+    logger.info("AI용 상세 인사이트 생성 중...")
+    insights = {}
+    
+    for _, row in hsi_results.iterrows():
+        pid = row['player_id']
+        p_name = row['player_name_ko']
+        
+        # 수비 스타일
+        def_style = "예측 및 길목 차단형 (Anticipatory)" if style_ratio.get(pid, 0) > 1.2 else "저돌적 경합 및 태클형 (Aggressive)"
+        
+        # 압박 스타일
+        press_intensity = press_ratio.get(pid, 0)
+        if press_intensity > 0.5:
+            press_style = "강력한 전방 압박 수행 (High-Presser)"
+        elif press_intensity > 0.3:
+            press_style = "적극적 중원 압박 (Medium-Presser)"
+        else:
+            press_style = "지역 방어 및 블록 형성 (Positional)"
+        
+        # 규율 수준
+        discipline = "우수 (Clean)" if clean_play_score.get(pid, 0) > 0.8 else "주의 필요 (Risky)"
+        
+        # 여름철 성능
+        summer_ret = p_retention.get(pid, 1.0)
+        if summer_ret >= 1.05:
+            summer_profile = f"여름철 성능 향상 ({summer_ret*100:.1f}%, 혹서기 강점)"
+        elif summer_ret >= 0.95:
+            summer_profile = f"여름철 안정적 유지 ({summer_ret*100:.1f}%)"
+        else:
+            summer_profile = f"여름철 성능 저하 ({summer_ret*100:.1f}%, 로테이션 고려)"
+        
+        # 경험 수준
+        total_games = int(games_played.get(pid, 0))
+        if total_games >= 25:
+            experience = "풍부한 경험 (주전급)"
+        elif total_games >= 15:
+            experience = "적정 경험 (로테이션급)"
+        else:
+            experience = "제한적 출전 (백업)"
+        
+        insights[p_name] = {
+            "defensive_style": def_style,
+            "pressing_style": press_style,
+            "pressing_intensity_pct": f"{press_intensity*100:.1f}%",
+            "discipline_level": discipline,
+            "fouls_per_game": f"{penalty_per_game.get(pid, 0):.2f}",
+            "summer_profile": summer_profile,
+            "summer_retention_pct": f"{summer_ret*100:.1f}%",
+            "experience_level": experience,
+            "total_games": total_games,
+            "t_fit_percentile": f"{row['t_fit_score']:.1f}",
+            "p_fit_percentile": f"{row['p_fit_score']:.1f}"
+        }
+    
+    # 6. 파일 저장
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    
     output_path = os.path.join(output_dir, 'hsi_scores_2024.csv')
-    hsi_df.to_csv(output_path, index=False)
-    print(f"HSI scores for all players saved to {output_path}")
+    hsi_results.to_csv(output_path, index=False)
+    logger.info(f"HSI 점수 저장: {output_path}")
+    
+    insights_path = os.path.join(output_dir, 'player_insights.json')
+    with open(insights_path, 'w', encoding='utf-8') as f:
+        json.dump(insights, f, ensure_ascii=False, indent=2)
+    logger.info(f"선수 인사이트 저장: {insights_path}")
+    
+    logger.info("=" * 60)
+    logger.info(f"파이프라인 완료: {len(players)} 명 선수 처리")
+    logger.info("=" * 60)
 
 
 if __name__ == '__main__':

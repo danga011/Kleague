@@ -3,26 +3,52 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.egg-info/
 
 # Streamlit
 .streamlit/
 
 # Env / secrets
 .env
+.env.local
 
 # Virtual environments
 k-scout-env-py39/
 venv/
 .venv/
+env/
 
 # Large Raw Data (GitHub 50MB limit)
 data/raw/raw_data.csv
 data/raw/*.xlsx
+data/raw/*.zip
+
+# Logs
+logs/
+*.log
 
 # Outputs (generated)
-output/reports/
+output/reports/*.pdf
+output/reports/*.png
 test.png
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.code-workspace
 
 # OS
 .DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Temporary files
+*.tmp
+*.bak
+*~
 

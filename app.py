@@ -5,10 +5,17 @@ import json
 import plotly.graph_objects as go
 import os
 from dotenv import load_dotenv
-from openai import OpenAI
 import base64
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
+
+# Gemini AI 설정
+try:
+    import google.generativeai as genai
+    GENAI_AVAILABLE = True
+except ImportError:
+    GENAI_AVAILABLE = False
+    genai = None
 
 # --- 페이지 설정 (가장 먼저 실행되어야 함) ---
 st.set_page_config(
@@ -32,6 +39,12 @@ except ImportError:
 
 # .env 파일 로드 (앱 시작 시)
 load_dotenv()
+
+# Gemini API 설정
+if GENAI_AVAILABLE:
+    gemini_api_key = os.getenv("GEMINI_API_KEY")
+    if gemini_api_key:
+        genai.configure(api_key=gemini_api_key)
 
 def group_position(pos):
     if pos in ['CF', 'RW', 'LW', 'SS']:
@@ -95,6 +108,7 @@ WVS_LOC_LABELS_PATH = Path("data/processed/wvs_loc_labels.csv")
 PLAYER_CITY_MAP_PATH = Path("data/processed/player_upbringing_city_map.csv")
 TEAM_CITY_MAP_PATH = Path("data/processed/kleague_team_city_map.csv")
 PLAYER_PROFILE_PATH = Path("data/raw/player_profile.csv")
+FOREIGN_PLAYERS_EXTENDED_PATH = Path("data/raw/foreign_birth_city_2024.csv")
 
 
 @st.cache_data
@@ -589,153 +603,371 @@ def get_all_player_scores(team_name, templates, hsi_df, foreigners_df):
     
     return sorted(scores, key=lambda x: x['score'], reverse=True)
 
-def get_ai_analysis_for_pdf(api_key, player_hsi, team_template, team_name, player_name, pos_group, adapt_fit_score):
-    """Calls OpenAI GPT-4 to get a detailed analysis for the PDF report."""
-    client = OpenAI(api_key=api_key)
+def get_gemini_model():
+    """Gemini 무료 모델 자동 선택"""
+    if not GENAI_AVAILABLE or not genai:
+        return None
+    try:
+        available_models = [m.name for m in genai.list_models() 
+                          if 'generateContent' in m.supported_generation_methods]
+        
+        # 우선순위: gemini-1.5-flash (무료, 빠름) -> gemini-1.5-pro -> gemini-pro
+        for model_name in ["models/gemini-1.5-flash", "models/gemini-1.5-pro", "models/gemini-pro"]:
+            if model_name in available_models:
+                return genai.GenerativeModel(model_name)
+        
+        # 위에 없으면 첫 번째 사용 가능한 모델
+        if available_models:
+            return genai.GenerativeModel(available_models[0])
+    except Exception as e:
+        print(f"Gemini 모델 로드 실패: {e}")
+    return None
+
+def load_player_insights():
+    """player_insights.json 로드"""
+    try:
+        insights_path = Path("output/player_insights.json")
+        if insights_path.exists():
+            with open(insights_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"인사이트 파일 로드 실패: {e}")
+    return {}
+
+def get_ai_analysis_for_pdf(player_hsi, team_template, team_name, player_name, pos_group, adapt_fit_score):
+    """Gemini AI - 유럽 빅리그 스카우터 수준 보고서 생성"""
+    model = get_gemini_model()
     
-    # 포지션별 가중치 설명
+    if not model:
+        print("⚠️ Gemini 모델 로드 실패, Fallback 사용")
+        return _generate_fallback_analysis(player_hsi, team_template, team_name, player_name, pos_group, adapt_fit_score)
+    
+    # 선수 상세 인사이트 로드
+    insights = load_player_insights()
+    player_insight = insights.get(player_name, {})
+    
+    # 인사이트가 없으면 기본값 사용
+    if not player_insight:
+        print(f"⚠️ {player_name} 선수 인사이트 없음, 기본값 사용")
+        player_insight = {
+            "defensive_style": "데이터 부족",
+            "pressing_style": "데이터 부족",
+            "pressing_intensity_pct": "N/A",
+            "discipline_level": "정보 부족",
+            "fouls_per_game": "N/A",
+            "summer_profile": "데이터 부족",
+            "summer_retention_pct": "N/A",
+            "experience_level": "정보 부족",
+            "total_games": 0
+        }
+    
+    # 포지션별 가중치 및 역할
     if pos_group == 'FW':
-        weight_desc = "공격수(FW)는 전술 실행(T-Fit 50%), 체력 유지(P-Fit 30%), 문화 적응(C-Fit 20%) 가중치를 적용"
+        weight_desc = "공격수(FW)는 전술 실행(T-Fit 50%), 체력 유지(P-Fit 30%), 문화 적응(C-Fit 20%) 가중치 적용"
+        tactical_focus = "전방 압박 강도, 수비 전환 참여도, 공격 공간 창출 능력"
+        benchmark = "리버풀 피르미누(압박형 FW), 맨체스터 시티 홀란드(결정력형 FW)"
     elif pos_group == 'MF':
-        weight_desc = "미드필더(MF)는 전술 실행(T-Fit 40%), 체력 유지(P-Fit 40%), 문화 적응(C-Fit 20%) 가중치를 적용"
+        weight_desc = "미드필더(MF)는 전술 실행(T-Fit 40%), 체력 유지(P-Fit 40%), 문화 적응(C-Fit 20%) 가중치 적용"
+        tactical_focus = "중원 압박 및 인터셉트, 공수 전환 연결, 활동량 지속력"
+        benchmark = "첼시 캉테(압박형 MF), 바르셀로나 페드리(빌드업형 MF)"
     elif pos_group == 'DF':
-        weight_desc = "수비수(DF)는 전술 실행(T-Fit 30%), 체력 유지(P-Fit 30%), 문화 적응(C-Fit 40%) 가중치를 적용"
+        weight_desc = "수비수(DF)는 전술 실행(T-Fit 30%), 체력 유지(P-Fit 30%), 문화 적응(C-Fit 40%) 가중치 적용"
+        tactical_focus = "최종 방어선 관리, 빌드업 참여, 라인 컨트롤"
+        benchmark = "맨시티 디아스(빌드업형 CB), 리버풀 판 다이크(지배형 CB)"
     else:
-        weight_desc = "기타 포지션은 균등 가중치(각 33%)를 적용"
+        weight_desc = "기타 포지션은 균등 가중치(각 33%) 적용"
+        tactical_focus = "팀 전술 시스템 내 특수 역할"
+        benchmark = "포지션별 벤치마크 적용"
     
-    # 차이 계산
+    # 통계적 맥락
     t_diff = player_hsi['t_fit_score'] - team_template['t_fit_score']
     p_diff = player_hsi['p_fit_score'] - team_template['p_fit_score']
     c_diff = player_hsi['c_fit_score'] - team_template['c_fit_score']
-
-    scout_template = f"""
-# K리그 선수 스카우팅 리포트
-
-## 1. 선수 & 경기 정보
-- 선수 이름: {player_name}
-- 포지션: {pos_group}
-- 소속 클럽: 정보 없음(추가 입력 필요)
-- 주발: 정보 없음(추가 입력 필요)
-- 신장 / 체중: 정보 없음(추가 입력 필요)
-- 관찰 경기: 정보 없음(대회 / 라운드 / 상대 / 날짜 / 장소 / 날씨)
-- 관찰 방식: 정보 없음(직관 / 영상, 풀매치/하이라이트)
-- 출전 시간: 정보 없음
-
-## 2. 전술 역할 요약
-- 팀 포메이션: 정보 없음(추가 입력 필요)
-- 팀 스타일(점유/역습/직선적 등): 데이터로 직접 관측 불가(추가 지표 필요)
-- 선수 역할 요약 (공격/수비 시 역할, 주요 존): 아래 HSI/시너지 분석 기반으로 요약
-
-## 3. 인 포제션(공격 시)
-- 포지셔닝: 데이터로 직접 관측 불가(추가 이벤트/트래킹 지표 필요)
-- 기술(터치, 패스, 드리블, 슈팅): 데이터로 직접 관측 불가(추가 지표 필요)
-- 의사결정: 데이터로 직접 관측 불가(추가 지표 필요)
-- 관련 수치(가능 시): 현재 리포트는 HSI(T/P/C) 중심
-
-## 4. 아웃 오브 포제션(수비 시)
-- 포지셔닝 & 커버: T-Fit(전술 실행) 기반으로 해석
-- 1대1 수비: 데이터로 직접 관측 불가(추가 지표 필요)
-- 전환(볼 소실 후 리액션 등): T-Fit 기반으로 해석(압박/전방 수비 참여)
-- 관련 수치(가능 시): T-Fit, 팀 대비 차이
-
-## 5. 피지컬 & 멘탈
-- 피지컬(스피드, 지구력, 체격, 공중볼 등): P-Fit(혹서기 유지) 중심으로 제한적 해석
-- 멘탈(집중력, 압박 대처, 리더십, 태도 등): 데이터로 직접 관측 불가(추가 정보 필요)
-- 인성/훈련 태도(정보 있을 시): 정보 없음(추가 입력 필요)
-
-## 6. 강점 / 보완점 / 발전 가능성
-- 강점:
-- 보완점:
-- 발전 가능성:
-
-## 7. 종합 평가 & 추천
-- 종합 평가:
-- 추천 사항: (즉시 영입 / 장기 모니터링 / 조건부 추천 등)
-""".strip()
-
+    
+    # 퍼센타일 해석
+    t_pctl = player_hsi['t_fit_score']
+    p_pctl = player_hsi['p_fit_score']
+    
+    if t_pctl >= 90:
+        t_league_rank = "상위 10% (엘리트 수준)"
+    elif t_pctl >= 75:
+        t_league_rank = "상위 25% (우수)"
+    elif t_pctl >= 50:
+        t_league_rank = "중위권 (평균 이상)"
+    else:
+        t_league_rank = "하위권 (개선 필요)"
+    
+    if p_pctl >= 90:
+        p_league_rank = "상위 10% (여름철 강점)"
+    elif p_pctl >= 75:
+        p_league_rank = "상위 25% (안정적)"
+    elif p_pctl >= 50:
+        p_league_rank = "중위권 (무난)"
+    else:
+        p_league_rank = "하위권 (주의 필요)"
+    
+    # 현재 날짜 가져오기
+    from datetime import datetime
+    current_date = datetime.now().strftime("%Y년 %m월 %d일")
+    
+    # 유럽 빅리그 스카우터 수준 프롬프트
     prompt = f"""
-    당신은 K-리그 이적 시장을 분석하는 전문 데이터 분석가입니다. 아래 데이터와 알고리즘 설명을 바탕으로, 특정 선수에 대한 상세한 스카우팅 리포트를 작성해주세요.
-    
-    리포트는 전문적이고 신뢰감 있는 어조로 작성해야 하며, 이모티콘 사용을 최소화하고 문장 형식의 분석을 선호합니다. 단순히 점수만 나열하지 말고, 점수의 산출 근거와 실제 경기에서의 전술적 의미를 구체적으로 서술하세요.
+당신은 유럽 5대 리그(프리미어리그, 라리가, 분데스리가, 세리에A, 리그1) 소속 구단의 스카우팅 디렉터입니다.
+20년 경력의 데이터 분석 기반 스카우팅 전문가로서, {team_name}의 {pos_group} 포지션 영입을 위한 
+**{player_name} 선수에 대한 전술 분석 보고서**를 작성합니다.
 
-    [HSI 알고리즘 설명]
-    1. T-Fit (Tactical): 전방 수비 강도와 파울/카드 리스크를 결합한 지표. 고강도 압박과 경기 규율 유지 능력을 동시에 평가합니다.
-    2. P-Fit (Physical): 여름철 활동량 유지 비율. 기후 변화에 따른 신체 능력 유지 성능을 의미합니다.
-    3. C-Fit (Cultural): 출생/성장 도시와 구단 연고지 간의 문화적 거리. 적응 기간 및 소통 리스크를 수치화한 지표입니다.
-    
-    [분석 대상 데이터]
-    - 선수: {player_name} ({pos_group})
-    - 종합 점수: {adapt_fit_score:.1f} / 100
-    - 세부 지표 (선수 vs 팀 평균): 
-      T-Fit: {player_hsi['t_fit_score']:.1f} (팀 평균 {team_template['t_fit_score']:.1f})
-      P-Fit: {player_hsi['p_fit_score']:.2f} (팀 평균 {team_template['p_fit_score']:.2f})
-      C-Fit: {player_hsi['c_fit_score']:.3f} (팀 기준 1.000)
+보고서 헤더:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{team_name} {pos_group} 포지션 영입을 위한 {player_name} 선수 전술 분석 보고서
+작성일: {current_date}
+작성자: 스카우팅 디렉터
+수신: {team_name} 단장 및 감독
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    [리포트 작성 지침]
-    1. 전문 용어를 적절히 사용하여 분석의 깊이를 더하세요.
-    2. 불필요한 장식 기호나 이모티콘은 지양하십시오.
-    3. 아래 템플릿의 섹션 구분을 준수하되, 각 항목은 서술형으로 작성하세요.
+주의사항: 
+- 기술적인 계산 과정이나 데이터 매핑 정책은 언급하지 마세요.
+- C-Fit 계산 방법, WVS 데이터 출처, fallback 정책 등 내부 기술 정보를 보고서에 포함하지 마세요.
+- 오직 스카우팅 분석 결과와 실무적 제안만 작성하세요.
 
-    {scout_template}
-    """
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【EXECUTIVE SUMMARY】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+▸ 선수: {player_name} ({pos_group})
+▸ 분석 대상 구단: {team_name}
+▸ 종합 적합도: {adapt_fit_score:.1f}/100 (HSI 알고리즘 기반)
+
+▸ 핵심 지표 (K리그 2024 시즌, 베이지안 보정 + 퍼센타일 변환)
+  → T-Fit (전술 실행력): {t_pctl:.1f}%ile | 리그 내 {t_league_rank}
+     · 팀 평균 대비: {t_diff:+.1f}p ({("✓ 팀 기준치 초과" if t_diff > 5 else "△ 팀 평균 수준" if t_diff > -5 else "✗ 팀 기준치 미달")})
+     · 수비 스타일: {player_insight.get('defensive_style', '데이터 부족')}
+     · 압박 스타일: {player_insight.get('pressing_style', '데이터 부족')}
+     · 압박 강도: {player_insight.get('pressing_intensity_pct', 'N/A')}
+  
+  → P-Fit (피지컬 지속력): {p_pctl:.1f}%ile | 리그 내 {p_league_rank}
+     · 팀 평균 대비: {p_diff:+.1f}p ({("✓ 여름철 강점" if p_diff > 5 else "△ 무난한 수준" if p_diff > -5 else "✗ 여름철 주의")})
+     · 여름철 프로파일: {player_insight.get('summer_profile', '데이터 부족')}
+     · 혹서기 유지율: {player_insight.get('summer_retention_pct', 'N/A')}
+  
+  → C-Fit (문화 적응): {player_hsi['c_fit_score']:.2f} (WVS 도시 벡터 기반)
+     · 초기 적응 예상 기간: {("2-4주 (빠른 정착)" if c_diff > 0 else "6-8주 (적응 지원 필요)")}
+
+▸ 출전 경험: {player_insight.get('total_games', 0)}경기 ({player_insight.get('experience_level', '정보 부족')})
+▸ 경기 규율: {player_insight.get('discipline_level', '정보 부족')} (경기당 파울 {player_insight.get('fouls_per_game', 'N/A')})
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【SECTION 1: TACTICAL PROFILE & SYNERGY ANALYSIS】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1.1 포지션별 전술 요구사항 (Position-Specific Requirements)
+  • {pos_group} 핵심 역할: {tactical_focus}
+  • 유럽 빅리그 벤치마크: {benchmark}
+  • {weight_desc}
+
+1.2 전술 실행 능력 평가 (Tactical Execution Assessment)
+  [T-Fit {t_pctl:.1f}%ile 심층 분석]
+  
+  당신의 임무: 다음 관점에서 전술 분석을 수행하세요.
+  
+  ① 리그 내 상대 평가
+     - T-Fit {t_pctl:.1f}%ile은 K리그 전체 선수 중 어느 수준인가?
+     - 이 수치가 유럽 리그로 환산 시 어느 등급에 해당하는가?
+     - {pos_group} 포지션 특성상 이 압박 강도가 충분한가, 부족한가?
+  
+  ② {team_name}과의 전술 궁합
+     - 팀 평균 대비 {t_diff:+.1f}p 차이의 실전 의미는 무엇인가?
+     - {team_name}의 플레이 스타일(압박 vs 블록, 점유 vs 역습)에 적합한가?
+     - 포지션 내 역할 분담(압박 트리거, 커버 범위) 최적화 방안은?
+  
+  ③ 압박 스타일 & 수비 성향 분석
+     - 수비 스타일: {player_insight.get('defensive_style', '분석 불가')}
+     - 압박 스타일: {player_insight.get('pressing_style', '분석 불가')}
+     - 이 스타일이 {team_name} {pos_group} 포지션에 유리한가, 불리한가?
+     - 경쟁 포지션 선수들과 비교 시 차별점은?
+  
+  ④ 경기 규율 & 클린플레이
+     - {player_insight.get('discipline_level', '정보 부족')}: 경기당 {player_insight.get('fouls_per_game', 'N/A')} 파울
+     - 압박 강도 대비 징계 리스크 수준은 적절한가?
+     - 주요 경쟁 리그(ACL, 컵 대회) 심판 기준 적응 가능성은?
+
+1.3 전술 시너지 종합 판단
+  • 즉시 전력 가능 여부
+  • 적응 훈련 필요 항목
+  • 포지션 내 최적 역할 제안
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【SECTION 2: PHYSICAL & ENVIRONMENTAL ADAPTATION】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+2.1 K리그 특수 환경 (혹서기 6-8월) 적응력
+  [P-Fit {p_pctl:.1f}%ile 심층 분석]
+  
+  당신의 임무: K리그만의 특수 환경에 대한 분석을 수행하세요.
+  
+  ① 여름철 퍼포먼스 패턴
+     - P-Fit {p_pctl:.1f}%ile의 의미: {p_league_rank}
+     - 여름철 성능 유지율: {player_insight.get('summer_retention_pct', 'N/A')}
+     - 이것이 주전 경쟁력에 미치는 영향은?
+  
+  ② 일정 밀집도 대응력
+     - 주중-주말 연속 경기(주 2경기) 소화 능력 예측
+     - 로테이션 운영 필요성 vs 풀타임 주전 가능성
+     - 체력 저하 시점 예측 (시즌 초반/중반/후반)
+  
+  ③ 팀 전력 분석
+     - 팀 평균 대비 {p_diff:+.2f}p 차이 해석
+     - {("여름철 경쟁력 우위" if p_diff > 0 else "로테이션 운영 권장")}
+     - 백업 선수 vs 주전 선수 운용 전략 제안
+  
+  ④ 피지컬 리스크 관리
+     - 부상 리스크 요인 (체력 저하, 과부하)
+     - 예방 트레이닝 권장 사항
+     - 의료진 모니터링 포인트
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【SECTION 3: CULTURAL INTEGRATION & OFF-FIELD FACTORS】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+3.1 초기 적응 예측 (Onboarding Timeline)
+  • C-Fit: {player_hsi['c_fit_score']:.2f} (WVS 문화 거리 지수)
+  • 예상 정착 기간: {("2-4주" if c_diff > 0 else "6-8주")}
+  • 주요 장벽: 언어, 생활 루틴, 전술 커뮤니케이션
+
+3.2 구단 지원 체계 제안
+  • 통역 배치 필요성
+  • 멘토링 시스템 (선배 외국인 선수 배정)
+  • 주거/가족 정착 지원
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【SECTION 4: TRANSFER RECOMMENDATION & CONTRACT STRATEGY】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+4.1 종합 영입 의견 (Final Verdict)
+  당신의 최종 판단을 명확히 제시하세요:
+  
+  ✓ 즉시 영입 추천 (Immediate Sign)
+  △ 조건부 영입 (Conditional Sign)
+  ✗ 영입 보류 (Pass)
+
+4.2 계약 조건 제안
+  • 연봉 범위 추정
+  • 계약 기간 (단기 vs 장기)
+  • 성과 조항 (출전 시간, 득점, 어시스트)
+  • 바이아웃 조항 검토
+
+4.3 리스크 관리 전략
+  • 주요 리스크 3가지
+  • 각 리스크별 완화 방안
+  • 모니터링 KPI 설정
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【작성 지침 (STRICT GUIDELINES)】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✓ 어조: 단호하고 전문적 ("~입니다", "~해야 합니다" 사용)
+✓ 근거: 모든 판단에 구체적 수치와 백분위 언급
+✓ 깊이: 단순 나열 금지, 인과관계와 전술적 맥락 제시
+✓ 실용성: 추상적 평가 대신 실행 가능한 액션 아이템 제시
+✓ 균형: 강점과 약점을 모두 명시하되, 해결책 제시
+✓ 분량: 최소 1200자 이상 (유럽 스카우팅 보고서 표준)
+
+이제 위 프레임워크에 따라 **유럽 빅리그 수준의 전술 분석 보고서**를 작성하세요.
+"""
     
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "당신은 K-리그 축구 전문 데이터 분석가입니다. 전문적이고 객관적인 스카우팅 리포트를 작성합니다."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.7,
-            max_tokens=2000
+        response = model.generate_content(
+            prompt,
+            generation_config=genai.types.GenerationConfig(
+                temperature=0.7,
+                max_output_tokens=8192,  # 최대 토큰 수로 증가 (하루 약 140개 보고서 생성 가능)
+            )
         )
-        return response.choices[0].message.content
+        
+        # 응답 확인
+        if hasattr(response, 'text') and response.text:
+            result_text = response.text.strip()
+            print(f"✓ Gemini AI 분석 완료 ({len(result_text)} 자)")
+            
+            # 너무 짧은 응답은 오류로 간주
+            if len(result_text) < 500:
+                print(f"⚠️ Gemini 응답이 너무 짧음 ({len(result_text)}자). Fallback 사용")
+                return _generate_fallback_analysis(player_hsi, team_template, team_name, player_name, pos_group, adapt_fit_score)
+            
+            return result_text
+        else:
+            print(f"✗ Gemini 응답이 비어있음. Response: {response}")
+            return _generate_fallback_analysis(player_hsi, team_template, team_name, player_name, pos_group, adapt_fit_score)
+            
     except Exception as e:
-        # AI 실패 시 상세 자동 분석 생성
-        # T-Fit 분석
-        t_score = player_hsi['t_fit_score']
-        if t_score >= 80:
-            t_analysis = f"T-Fit {t_score:.1f}점은 상위권 수준의 전방 수비/압박 실행 지표입니다. 전방 지역에서의 Duel/Tackle/Interception 참여가 적극적이며, 전술적으로 높은 압박 강도를 유지할 수 있습니다. 또한 T-Fit에는 파울/카드(징계) 리스크(클린플레이)가 함께 반영되므로, 단순 활동량이 아니라 '전술 실행 품질' 관점에서 해석해야 합니다."
-        elif t_score >= 50:
-            t_analysis = f"T-Fit {t_score:.1f}점은 중상위권 수준의 전술 실행 지표입니다. 전방 수비 참여가 일정 수준 이상이며, 팀 전술에 따라 압박 강도를 조절할 수 있습니다. 다만 팀이 극단적인 하이프레싱을 요구하는 경우에는 역할 정의(압박 트리거/커버 범위) 조정이 필요할 수 있습니다."
-        else:
-            t_analysis = f"T-Fit {t_score:.1f}점은 평균 이하의 전술 실행 지표입니다. 전방 지역에서의 수비 행동 참여가 낮아, 하이프레싱 성향이 강한 팀에서는 압박 트리거/전환 속도에 대한 적응이 필요합니다. 반대로 블록 수비/역습 중심 팀에서는 역할에 따라 효율적으로 활용될 수 있습니다."
-        
-        # P-Fit 분석
-        p_score = player_hsi['p_fit_score']
-        if p_score >= 1.0:
-            p_analysis = f"P-Fit {p_score:.2f}점은 뛰어난 여름 적응력을 나타냅니다. 여름철 활동량이 일반 시즌 대비 {(p_score-1)*100:.1f}% 증가하여, K리그 혹서기(6-8월)에도 안정적인 활동량을 유지합니다. 주전 경쟁에서 유리한 체력 조건입니다."
-        elif p_score >= 0.9:
-            p_analysis = f"P-Fit {p_score:.2f}점은 양호한 수준입니다. 여름철 활동량이 {(1-p_score)*100:.1f}% 감소하지만 경기력에 큰 영향은 없습니다. 다만 8월 밀집 일정 시 로테이션 운영이 권장됩니다."
-        else:
-            p_analysis = f"P-Fit {p_score:.2f}점은 주의가 필요합니다. 여름철 활동량이 {(1-p_score)*100:.1f}% 감소하여 혹서기 체력 관리에 신경 써야 합니다. 7-8월 원정 경기 시 컨디션 저하 가능성이 있습니다."
-        
-        # C-Fit 분석
-        c_score = player_hsi['c_fit_score']
-        if c_score >= 0.95:
-            c_analysis = f"C-Fit {c_score:.3f}점은 선수 성장도시 ↔ 분석도시(구단 연고지) 문화적 거리가 낮은 편으로 해석됩니다. 생활/의사소통/조직문화 적응 비용이 상대적으로 낮아, 초기 적응 과정에서 전술 이해와 팀 커뮤니케이션에 빠르게 녹아들 가능성이 큽니다."
-        elif c_score >= 0.90:
-            c_analysis = f"C-Fit {c_score:.3f}점은 무난한 문화 적합도 수준입니다. 기본 적응은 가능하나, 언어/생활 루틴/커뮤니케이션 지원이 있으면 적응 속도가 빨라질 수 있습니다."
-        elif c_score >= 0.85:
-            c_analysis = f"C-Fit {c_score:.3f}점은 중간 수준의 문화 적합도입니다. 초반 4~8주 동안 생활/훈련 루틴 적응과 커뮤니케이션(용어/전술 약속) 지원이 성과에 영향을 줄 수 있습니다."
-        else:
-            c_analysis = f"C-Fit {c_score:.3f}점은 문화적 거리 관점에서 적응 리스크가 큰 편입니다. 초기 정착(주거/식습관/언어) 및 팀 내 커뮤니케이션 지원 없이는 전술 수행이 지연될 수 있으므로, 구단 차원의 온보딩/멘토링 체계를 병행하는 것이 바람직합니다."
-        
-        # 등급 및 추천
-        if adapt_fit_score >= 90:
-            grade_text = "S등급 (최상위 적합)"
-            recommendation = f"{team_name}의 전술 시스템에 매우 적합한 선수입니다. 즉시 주전 경쟁이 가능하며, 팀 전술 구현에 핵심 역할을 수행할 수 있습니다. 영입을 적극 추천합니다."
-        elif adapt_fit_score >= 80:
-            grade_text = "A등급 (우수)"
-            recommendation = f"{team_name}에 좋은 보강이 될 수 있습니다. 약간의 적응 기간 후 주전 경쟁이 가능하며, 팀 전술에 기여할 수 있습니다. 영입 추천합니다."
-        elif adapt_fit_score >= 70:
-            grade_text = "B등급 (양호)"
-            recommendation = f"{team_name}에서 역할을 수행할 수 있으나, 전술적 보완이 필요합니다. 백업 또는 로테이션 자원으로 적합합니다. 조건부 영입을 권장합니다."
-        else:
-            grade_text = "C등급 이하 (보통)"
-            recommendation = f"{team_name}의 현재 전술 시스템과 다소 맞지 않습니다. 전술 변화 또는 선수 역할 재정의가 필요합니다. 신중한 검토를 권장합니다."
-        
-        fallback = f"""
+        print(f"✗ Gemini API 호출 실패: {e}")
+        import traceback
+        traceback.print_exc()
+        return _generate_fallback_analysis(player_hsi, team_template, team_name, player_name, pos_group, adapt_fit_score)
+
+def _generate_fallback_analysis(player_hsi, team_template, team_name, player_name, pos_group, adapt_fit_score):
+    """AI 호출 실패 시 자동 생성되는 상세 분석"""
+    from datetime import datetime
+    current_date = datetime.now().strftime("%Y년 %m월 %d일")
+    
+    # T-Fit 분석 (퍼센타일 기준)
+    t_score = player_hsi['t_fit_score']
+    t_diff = player_hsi['t_fit_score'] - team_template['t_fit_score']
+    p_diff = player_hsi['p_fit_score'] - team_template['p_fit_score']
+    c_diff = player_hsi['c_fit_score'] - team_template['c_fit_score']
+    
+    if t_score >= 80:
+        t_analysis = f"T-Fit {t_score:.1f}%ile (리그 상위 20%)는 우수한 전방 수비/압박 실행 능력을 나타냅니다. 전방 지역에서의 Duel/Tackle/Interception 참여가 리그 평균을 크게 상회하며, 하이프레싱 전술에 즉시 투입 가능합니다."
+    elif t_score >= 60:
+        t_analysis = f"T-Fit {t_score:.1f}%ile (리그 중상위권)는 양호한 전술 실행 지표입니다. 팀 전술에 따라 압박 강도를 조절할 수 있으며, 적응 훈련 후 주전 경쟁이 가능합니다."
+    elif t_score >= 40:
+        t_analysis = f"T-Fit {t_score:.1f}%ile (리그 중위권)는 평균 수준의 전술 실행력입니다. 특정 역할에 특화된 훈련이 필요하며, 로테이션 자원으로 활용 가능합니다."
+    else:
+        t_analysis = f"T-Fit {t_score:.1f}%ile (리그 하위권)는 전방 압박 참여가 제한적입니다. 블록 수비 중심 팀에서 특정 역할로 활용 가능하나, 하이프레싱 팀에는 부적합합니다."
+    
+    # P-Fit 분석 (퍼센타일 기준)
+    p_score = player_hsi['p_fit_score']
+    if p_score >= 80:
+        p_analysis = f"P-Fit {p_score:.1f}%ile (리그 상위 20%)는 뛰어난 혹서기 적응력을 보입니다. K리그 여름철(6-8월)에도 안정적인 활동량을 유지하여 주전 경쟁에서 유리합니다."
+    elif p_score >= 60:
+        p_analysis = f"P-Fit {p_score:.1f}%ile (리그 중상위권)는 양호한 여름철 체력 유지 능력입니다. 여름 일정 소화에 큰 문제가 없으나, 밀집 일정 시 로테이션 고려가 권장됩니다."
+    elif p_score >= 40:
+        p_analysis = f"P-Fit {p_score:.1f}%ile (리그 중위권)는 평균적인 여름철 대응력입니다. 혹서기 컨디션 관리가 필요하며, 주중-주말 연속 경기 시 체력 저하 가능성이 있습니다."
+    else:
+        p_analysis = f"P-Fit {p_score:.1f}%ile (리그 하위권)는 여름철 성능 저하 리스크가 있습니다. 7-8월 로테이션 운영이 필수이며, 체력 관리 프로그램이 필요합니다."
+    
+    # C-Fit 분석
+    c_score = player_hsi['c_fit_score']
+    if c_score >= 0.95:
+        c_analysis = f"C-Fit {c_score:.3f}점은 선수 성장도시 ↔ 분석도시(구단 연고지) 문화적 거리가 낮은 편으로 해석됩니다. 생활/의사소통/조직문화 적응 비용이 상대적으로 낮아, 초기 적응 과정에서 전술 이해와 팀 커뮤니케이션에 빠르게 녹아들 가능성이 큽니다."
+    elif c_score >= 0.90:
+        c_analysis = f"C-Fit {c_score:.3f}점은 무난한 문화 적합도 수준입니다. 기본 적응은 가능하나, 언어/생활 루틴/커뮤니케이션 지원이 있으면 적응 속도가 빨라질 수 있습니다."
+    elif c_score >= 0.85:
+        c_analysis = f"C-Fit {c_score:.3f}점은 중간 수준의 문화 적합도입니다. 초반 4~8주 동안 생활/훈련 루틴 적응과 커뮤니케이션(용어/전술 약속) 지원이 성과에 영향을 줄 수 있습니다."
+    else:
+        c_analysis = f"C-Fit {c_score:.3f}점은 문화적 거리 관점에서 적응 리스크가 큰 편입니다. 초기 정착(주거/식습관/언어) 및 팀 내 커뮤니케이션 지원 없이는 전술 수행이 지연될 수 있으므로, 구단 차원의 온보딩/멘토링 체계를 병행하는 것이 바람직합니다."
+    
+    # 등급 및 추천
+    if adapt_fit_score >= 90:
+        grade_text = "S등급 (최상위 적합)"
+        recommendation = f"{team_name}의 전술 시스템에 매우 적합한 선수입니다. 즉시 주전 경쟁이 가능하며, 팀 전술 구현에 핵심 역할을 수행할 수 있습니다. 영입을 적극 추천합니다."
+    elif adapt_fit_score >= 80:
+        grade_text = "A등급 (우수)"
+        recommendation = f"{team_name}에 좋은 보강이 될 수 있습니다. 약간의 적응 기간 후 주전 경쟁이 가능하며, 팀 전술에 기여할 수 있습니다. 영입 추천합니다."
+    elif adapt_fit_score >= 70:
+        grade_text = "B등급 (양호)"
+        recommendation = f"{team_name}에서 역할을 수행할 수 있으나, 전술적 보완이 필요합니다. 백업 또는 로테이션 자원으로 적합합니다. 조건부 영입을 권장합니다."
+    else:
+        grade_text = "C등급 이하 (보통)"
+        recommendation = f"{team_name}의 현재 전술 시스템과 다소 맞지 않습니다. 전술 변화 또는 선수 역할 재정의가 필요합니다. 신중한 검토를 권장합니다."
+    
+    fallback = f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{team_name} {pos_group} 포지션 영입을 위한 {player_name} 선수 전술 분석 보고서
+작성일: {current_date}
+작성자: 스카우팅 디렉터
+수신: {team_name} 단장 및 감독
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 A. 선수 프로필 및 HSI 분석
 
 {player_name} 선수의 HSI(Harmonic Synergy Index) 지표를 분석한 결과입니다.
@@ -746,7 +978,7 @@ A. 선수 프로필 및 HSI 분석
 [P-Fit: 환경 적합도]
 {p_analysis}
 
-        [C-Fit: 문화 적합도]
+[C-Fit: 문화 적응]
 {c_analysis}
 
 B. {team_name}과의 전술 시너지 분석
@@ -759,8 +991,8 @@ B. {team_name}과의 전술 시너지 분석
 - P-Fit 비교: 선수 {player_hsi['p_fit_score']:.2f} vs 팀 평균 {team_template['p_fit_score']:.2f} (차이: {p_diff:+.2f})
   → {'여름 시즌 체력 면에서 팀에 기여할 수 있습니다.' if p_diff >= 0 else '여름 일정 소화에 로테이션 운영이 권장됩니다.'}
 
-        - C-Fit 비교: 선수 {player_hsi['c_fit_score']:.3f} vs 팀 평균 {team_template['c_fit_score']:.3f} (차이: {c_diff:+.3f})
-          → {'리그/팀 문화 적응 리스크가 낮은 편입니다.' if c_diff >= 0 else '초기 적응(언어/생활/전술 커뮤니케이션) 지원이 필요합니다.'}
+- C-Fit 비교: 선수 {player_hsi['c_fit_score']:.3f} vs 팀 평균 {team_template['c_fit_score']:.3f} (차이: {c_diff:+.3f})
+  → {'리그/팀 문화 적응 리스크가 낮은 편입니다.' if c_diff >= 0 else '초기 적응(언어/생활/전술 커뮤니케이션) 지원이 필요합니다.'}
 
 C. 스카우팅 의견 및 영입 제언
 
@@ -773,8 +1005,8 @@ C. 스카우팅 의견 및 영입 제언
 ---
 본 분석은 2024 시즌 K리그 공식 데이터를 기반으로, HSI(Harmonic Synergy Index) 알고리즘을 통해 산출되었습니다.
 분석 모델: K-Scout Adapt-Fit AI v1.0 | ANYONE COMPANY
-        """
-        return fallback
+"""
+    return fallback
 
 def generate_analysis_summary(player_hsi, team_template):
     """선수의 HSI 점수와 팀 템플릿을 비교하여 분석 코멘트를 생성합니다."""
@@ -885,6 +1117,16 @@ st.sidebar.markdown("""
     <p style="color: #872B95; font-size: 0.7rem; margin: 0.1rem 0 0 0;">ANYONE COMPANY</p>
 </div>
 """, unsafe_allow_html=True)
+st.sidebar.markdown("---")
+
+# Gemini AI 연결 상태 표시
+if GENAI_AVAILABLE and os.getenv("GEMINI_API_KEY"):
+    st.sidebar.success("✅ Gemini AI 엔진 연결 성공")
+elif GENAI_AVAILABLE:
+    st.sidebar.warning("⚠️ Gemini API 키 미설정 (기본 분석만 제공)")
+else:
+    st.sidebar.error("❌ google-generativeai 라이브러리 미설치")
+
 st.sidebar.markdown("---")
 
 # 팀 선택
@@ -1081,8 +1323,21 @@ with tab1:
         st.caption(f"{get_position_korean(player_pos)} ({pos_group})")
 
         # 선수 프로필
+        en_name = ""
+        nationality = ""
         try:
-            if PLAYER_PROFILE_PATH.exists():
+            # 외국인 선수 상세 정보 우선 확인
+            if FOREIGN_PLAYERS_EXTENDED_PATH.exists():
+                foreign_prof = pd.read_csv(FOREIGN_PLAYERS_EXTENDED_PATH)
+                if not foreign_prof.empty and "player_name_ko" in foreign_prof.columns:
+                    fhit = foreign_prof[foreign_prof["player_name_ko"] == selected_player_name]
+                    if not fhit.empty:
+                        frow = fhit.iloc[0]
+                        en_name = str(frow.get("english_full_name", "")).strip()
+                        nationality = str(frow.get("nationality", "")).strip()
+            
+            # 찾지 못했으면 기본 프로필 파일 확인
+            if (not en_name or not nationality) and PLAYER_PROFILE_PATH.exists():
                 prof = pd.read_csv(PLAYER_PROFILE_PATH)
                 if not prof.empty:
                     prof["player_id"] = pd.to_numeric(prof.get("player_id"), errors="coerce")
@@ -1094,15 +1349,18 @@ with tab1:
                         hit = prof[prof["player_name_ko"] == selected_player_name]
                     if not hit.empty:
                         prow = hit.iloc[0]
-                        en_name = str(prow.get("player_name_en_full", "")).strip()
-                        if en_name:
-                            st.caption(f"영문 성명: {en_name}")
-
-                        nat = str(prow.get("nationality", "")).strip()
-                        if nat and nat.lower() != "foreign":
-                            st.caption(f"국적: {nat}")
-        except Exception:
-            pass
+                        if not en_name:
+                            en_name = str(prow.get("player_name_en_full", "")).strip()
+                        if not nationality:
+                            nationality = str(prow.get("nationality", "")).strip()
+            
+            # 정보 표시
+            if en_name and en_name.lower() not in ['nan', 'none', '']:
+                st.caption(f"영문 성명: {en_name}")
+            if nationality and nationality.lower() not in ['nan', 'none', '', 'foreign']:
+                st.caption(f"국적: {nationality}")
+        except Exception as e:
+            print(f"프로필 로드 실패: {e}")
 
         st.markdown("---")
 
@@ -1154,17 +1412,19 @@ with tab1:
         st.markdown(f"### {selected_player_name} vs {client_team} 비교")
 
         categories = ["T-Fit (전술)", "P-Fit (환경)", "C-Fit (문화)"]
+        
+        # C-Fit은 0-1 범위이므로 100배하여 퍼센타일 스케일에 맞춤
         player_r = [
-            player_hsi_for_score["t_fit_score"],
-            player_hsi_for_score["p_fit_score"] * 100,
-            player_hsi_for_score["c_fit_score"] * 100,
+            player_hsi_for_score["t_fit_score"],  # 이미 퍼센타일 (0-100)
+            player_hsi_for_score["p_fit_score"],  # 이미 퍼센타일 (0-100)
+            player_hsi_for_score["c_fit_score"] * 100,  # 0-1 → 0-100 변환
         ]
         team_r = [
             team_template_for_score["t_fit_score"],
-            team_template_for_score["p_fit_score"] * 100,
-            team_template_for_score["c_fit_score"] * 100,
+            team_template_for_score["p_fit_score"],
+            team_template_for_score["c_fit_score"] * 100,  # 0-1 → 0-100 변환
         ]
-        max_r = max(player_r + team_r + [120])
+        max_r = 100  # 퍼센타일 최대값
 
         fig = go.Figure()
         # 선수 프로필 - 브랜드 핑크-오렌지
@@ -1281,12 +1541,15 @@ with tab3:
 # PDF 생성
 # ============================================================
 if pdf_button:
-    api_key = os.getenv("OPENAI_API_KEY")
-
-    if not api_key:
-        st.error("OpenAI API 키가 설정되지 않았습니다. .env 파일에 OPENAI_API_KEY를 설정해주세요.")
-    else:
-        with st.spinner("AI 분석 보고서를 생성하는 중..."):
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    
+    if not GENAI_AVAILABLE:
+        st.warning("⚠️ google-generativeai 라이브러리가 설치되지 않았습니다. `pip install google-generativeai`를 실행해주세요.")
+    
+    if not gemini_key and GENAI_AVAILABLE:
+        st.info("💡 Gemini API 키가 설정되지 않았습니다. AI 분석 없이 기본 통계 분석만 제공됩니다.")
+    
+    with st.spinner("AI 기반 스카우팅 보고서를 생성하는 중..."):
             output_dir = Path("output")
             reports_dir = output_dir / "reports"
             reports_dir.mkdir(parents=True, exist_ok=True)
@@ -1327,8 +1590,8 @@ if pdf_button:
                 showlegend=True,
                 legend=dict(
                     orientation="h",
-                    yanchor="bottom",
-                    y=1.1,
+                    yanchor="top",
+                    y=-0.15,  # 그래프 하단으로 이동
                     xanchor="center",
                     x=0.5,
                     font=dict(color='#000000', size=12)  # 검정 글씨
@@ -1354,7 +1617,6 @@ if pdf_button:
                     chart_path.unlink() # 실패한 파일이 있으면 삭제
 
             ai_analysis_text = get_ai_analysis_for_pdf(
-                api_key, 
                 player_hsi_for_score, 
                 team_template_for_score, 
                 client_team, 
@@ -1362,37 +1624,23 @@ if pdf_button:
                 pos_group, 
                 adapt_fit_score
             )
-
-            # ============================================================
-            # C-Fit 산출 주의사항(공모전 제출 버전) - PDF에 명시
-            # ============================================================
-            try:
-                def _src_ko(v):
-                    m = {"city": "도시", "country": "국가", "global": "글로벌"}
-                    return m.get(str(v), str(v))
-
-                if isinstance(cfit_meta, dict):
-                    hs = _src_ko(cfit_meta.get("home_source"))
-                    ts = _src_ko(cfit_meta.get("host_source"))
-                    unit_line = f"- C-Fit 계산 단위: 선수={hs} / 분석={ts}"
-                else:
-                    unit_line = "- C-Fit 계산 단위: 확인 불가"
-
-                if c_fit_dynamic is None and cfit_reason:
-                    status_line = f"- 상태: C-Fit(도시) 계산 불가 → 임시값 사용 ({cfit_reason})"
-                else:
-                    status_line = "- 상태: C-Fit 계산 성공"
-
-                cfit_disclosure = (
-                    "## C-Fit 산출 관련 안내\n"
-                    f"{unit_line}\n"
-                    f"{status_line}\n"
-                    "- WVS 데이터 매핑 정책에 따라, 도시 코드가 미비한 경우 국가 단위 데이터로 계산(fallback)되었습니다.\n"
-                    "- 일부 국가는 데이터 가용성에 따라 글로벌 평균 벡터를 사용하였습니다.\n"
+            
+            # AI 분석 결과 확인
+            if not ai_analysis_text or len(ai_analysis_text.strip()) < 100:
+                st.warning("⚠️ AI 분석 생성에 실패했거나 내용이 부족합니다. Fallback 분석을 사용합니다.")
+                ai_analysis_text = _generate_fallback_analysis(
+                    player_hsi_for_score,
+                    team_template_for_score,
+                    client_team,
+                    selected_player_name,
+                    pos_group,
+                    adapt_fit_score
                 )
-                ai_analysis_text = f"{cfit_disclosure}\n\n{ai_analysis_text}"
-            except Exception:
-                pass
+            
+            # 디버깅: AI 분석 길이 확인
+            print(f"AI 분석 텍스트 길이: {len(ai_analysis_text)} 자")
+            
+            # C-Fit 기술 정보는 PDF에 포함하지 않음 (AI 프롬프트에서 이미 제외 지시)
 
             pdf_path = reports_dir / f"K-Scout_Report_{selected_player_name}_{client_team}.pdf"
             create_pdf(

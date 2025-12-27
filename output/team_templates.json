@@ -1,266 +1,266 @@
 {
     "FC서울": {
         "DF": {
-            "t_fit_score": 3.408716300983466,
-            "p_fit_score": 0.9681636134889186,
-            "c_fit_score": 0.85
+            "t_fit_score": 67.20342437831226,
+            "p_fit_score": 44.37423562984101,
+            "c_fit_score": 50.0
         },
         "ETC": {
-            "t_fit_score": 0.9172177520999514,
-            "p_fit_score": 1.0504455103107737,
-            "c_fit_score": 0.85
+            "t_fit_score": 23.254324151185138,
+            "p_fit_score": 72.90198590647022,
+            "c_fit_score": 50.0
         },
         "FW": {
-            "t_fit_score": 1.2150683963012983,
-            "p_fit_score": 0.9581666852742433,
-            "c_fit_score": 0.85
+            "t_fit_score": 44.21711509715994,
+            "p_fit_score": 44.18908819133034,
+            "c_fit_score": 50.0
         },
         "MF": {
-            "t_fit_score": 2.030532951520623,
-            "p_fit_score": 0.9450845795335621,
-            "c_fit_score": 0.85
+            "t_fit_score": 58.80845611787316,
+            "p_fit_score": 43.43369634849456,
+            "c_fit_score": 50.0
         }
     },
     "강원FC": {
         "DF": {
-            "t_fit_score": 2.054888643273705,
-            "p_fit_score": 1.0158624898617035,
-            "c_fit_score": 0.85
+            "t_fit_score": 55.11210762331839,
+            "p_fit_score": 50.403587443946186,
+            "c_fit_score": 50.0
         },
         "ETC": {
-            "t_fit_score": 0.4743254535092046,
-            "p_fit_score": 1.0398740434573537,
-            "c_fit_score": 0.85
+            "t_fit_score": 25.037369207772795,
+            "p_fit_score": 64.94768310911809,
+            "c_fit_score": 50.0
         },
         "FW": {
-            "t_fit_score": 1.0493635112345372,
-            "p_fit_score": 1.0160997788659032,
-            "c_fit_score": 0.85
+            "t_fit_score": 31.746840603342847,
+            "p_fit_score": 45.576844679983694,
+            "c_fit_score": 50.0
         },
         "MF": {
-            "t_fit_score": 1.5366710196762543,
-            "p_fit_score": 1.069452700872415,
-            "c_fit_score": 0.85
+            "t_fit_score": 58.37070254110612,
+            "p_fit_score": 59.71599402092676,
+            "c_fit_score": 50.0
         }
     },
     "광주FC": {
         "DF": {
-            "t_fit_score": 2.7651877982714144,
-            "p_fit_score": 0.9852162897350093,
-            "c_fit_score": 0.8499999999999999
+            "t_fit_score": 51.87133494308382,
+            "p_fit_score": 50.18972059330804,
+            "c_fit_score": 50.0
         },
         "ETC": {
-            "t_fit_score": 0.8935652323089102,
-            "p_fit_score": 1.0459992634999207,
-            "c_fit_score": 0.85
+            "t_fit_score": 26.793721973094172,
+            "p_fit_score": 67.9372197309417,
+            "c_fit_score": 50.0
         },
         "FW": {
-            "t_fit_score": 1.5399332415921525,
-            "p_fit_score": 1.0238382343039525,
-            "c_fit_score": 0.85
+            "t_fit_score": 49.125560538116595,
+            "p_fit_score": 38.47533632286995,
+            "c_fit_score": 50.0
         },
         "MF": {
-            "t_fit_score": 1.4295518775019873,
-            "p_fit_score": 0.9798444742150465,
-            "c_fit_score": 0.85
+            "t_fit_score": 55.48308194048104,
+            "p_fit_score": 44.49653485527925,
+            "c_fit_score": 50.0
         }
     },
     "김천 상무 프로축구단": {
         "DF": {
-            "t_fit_score": 2.9705079130686043,
-            "p_fit_score": 1.1346072439431045,
-            "c_fit_score": 0.85
+            "t_fit_score": 61.49903907751441,
+            "p_fit_score": 54.548366431774504,
+            "c_fit_score": 50.0
         },
         "ETC": {
-            "t_fit_score": 0.9245513151315853,
-            "p_fit_score": 0.9869654177786011,
-            "c_fit_score": 0.85
+            "t_fit_score": 28.08295964125561,
+            "p_fit_score": 49.88789237668161,
+            "c_fit_score": 50.0
         },
         "FW": {
-            "t_fit_score": 1.3190277522919784,
-            "p_fit_score": 1.037809852800603,
-            "c_fit_score": 0.85
+            "t_fit_score": 45.93209481101858,
+            "p_fit_score": 60.15374759769379,
+            "c_fit_score": 50.0
         },
         "MF": {
-            "t_fit_score": 1.7589350798295011,
-            "p_fit_score": 1.017170405860573,
-            "c_fit_score": 0.85
+            "t_fit_score": 46.827354260089685,
+            "p_fit_score": 48.4304932735426,
+            "c_fit_score": 50.0
         }
     },
     "대구FC": {
         "DF": {
-            "t_fit_score": 3.241253268769308,
-            "p_fit_score": 0.9857889726341726,
-            "c_fit_score": 0.85
+            "t_fit_score": 76.23318385650224,
+            "p_fit_score": 50.26905829596412,
+            "c_fit_score": 50.0
         },
         "ETC": {
-            "t_fit_score": 0.5991864399361998,
-            "p_fit_score": 0.9539789573107872,
-            "c_fit_score": 0.85
+            "t_fit_score": 39.237668161434975,
+            "p_fit_score": 34.52914798206278,
+            "c_fit_score": 50.0
         },
         "FW": {
-            "t_fit_score": 1.3198932951265225,
-            "p_fit_score": 0.9777582740771078,
-            "c_fit_score": 0.85
+            "t_fit_score": 46.973094170403584,
+            "p_fit_score": 47.14125560538116,
+            "c_fit_score": 50.0
         },
         "MF": {
-            "t_fit_score": 1.4535028308619908,
-            "p_fit_score": 0.9830769009680066,
-            "c_fit_score": 0.85
+            "t_fit_score": 48.91629297458894,
+            "p_fit_score": 48.16890881913304,
+            "c_fit_score": 50.0
         }
     },
     "대전 하나 시티즌": {
         "DF": {
-            "t_fit_score": 3.4676736133956334,
-            "p_fit_score": 1.055412296448122,
-            "c_fit_score": 0.85
+            "t_fit_score": 63.164638052530435,
+            "p_fit_score": 52.322229340166565,
+            "c_fit_score": 50.0
         },
         "ETC": {
-            "t_fit_score": 0.9764083938660209,
-            "p_fit_score": 1.03413729590547,
-            "c_fit_score": 0.85
+            "t_fit_score": 37.5,
+            "p_fit_score": 55.60538116591928,
+            "c_fit_score": 50.0
         },
         "FW": {
-            "t_fit_score": 1.5243913158660556,
-            "p_fit_score": 1.0382622362477938,
-            "c_fit_score": 0.85
+            "t_fit_score": 43.60239162929746,
+            "p_fit_score": 53.482810164424514,
+            "c_fit_score": 50.0
         },
         "MF": {
-            "t_fit_score": 1.8679784571010067,
-            "p_fit_score": 1.0238444973645384,
-            "c_fit_score": 0.85
+            "t_fit_score": 48.101644245142005,
+            "p_fit_score": 52.21225710014948,
+            "c_fit_score": 50.0
         }
     },
     "수원FC": {
         "DF": {
-            "t_fit_score": 3.1116013372596054,
-            "p_fit_score": 0.9671450059724681,
-            "c_fit_score": 0.85
+            "t_fit_score": 59.09940209267564,
+            "p_fit_score": 48.00074738415545,
+            "c_fit_score": 50.0
         },
         "ETC": {
-            "t_fit_score": 0.972999026693344,
-            "p_fit_score": 0.9891664966580015,
-            "c_fit_score": 0.85
+            "t_fit_score": 30.325112107623315,
+            "p_fit_score": 48.05680119581465,
+            "c_fit_score": 50.0
         },
         "FW": {
-            "t_fit_score": 1.0777073684189857,
-            "p_fit_score": 0.9583685457830843,
-            "c_fit_score": 0.85
+            "t_fit_score": 44.13982878108439,
+            "p_fit_score": 46.10680799021606,
+            "c_fit_score": 50.0
         },
         "MF": {
-            "t_fit_score": 1.7417494787829322,
-            "p_fit_score": 0.8863128819277216,
-            "c_fit_score": 0.85
+            "t_fit_score": 55.53064275037369,
+            "p_fit_score": 25.859491778774288,
+            "c_fit_score": 50.0
         }
     },
     "울산 HD FC": {
         "DF": {
-            "t_fit_score": 2.405847342713205,
-            "p_fit_score": 1.0420280404881277,
-            "c_fit_score": 0.85
+            "t_fit_score": 67.30941704035874,
+            "p_fit_score": 61.2780269058296,
+            "c_fit_score": 50.0
         },
         "ETC": {
-            "t_fit_score": 0.8164254700654057,
-            "p_fit_score": 0.8968268667242095,
-            "c_fit_score": 0.85
+            "t_fit_score": 54.26008968609866,
+            "p_fit_score": 22.6457399103139,
+            "c_fit_score": 50.0
         },
         "FW": {
-            "t_fit_score": 1.4168465771605456,
-            "p_fit_score": 0.9762555218033598,
-            "c_fit_score": 0.8499999999999999
+            "t_fit_score": 43.25629527423249,
+            "p_fit_score": 40.78992756122802,
+            "c_fit_score": 50.0
         },
         "MF": {
-            "t_fit_score": 1.6140255525481906,
-            "p_fit_score": 0.8862691685839055,
-            "c_fit_score": 0.85
+            "t_fit_score": 48.75560538116592,
+            "p_fit_score": 33.29596412556053,
+            "c_fit_score": 50.0
         }
     },
     "인천 유나이티드": {
         "DF": {
-            "t_fit_score": 2.875947093618616,
-            "p_fit_score": 1.0503943249942398,
-            "c_fit_score": 0.8499999999999999
+            "t_fit_score": 70.38634011728183,
+            "p_fit_score": 60.865815798551225,
+            "c_fit_score": 50.0
         },
         "ETC": {
-            "t_fit_score": 0.51242745983399,
-            "p_fit_score": 1.141983525276206,
-            "c_fit_score": 0.85
+            "t_fit_score": 24.131165919282513,
+            "p_fit_score": 70.23542600896862,
+            "c_fit_score": 50.0
         },
         "FW": {
-            "t_fit_score": 0.8739292587386854,
-            "p_fit_score": 0.9969287009596829,
-            "c_fit_score": 0.85
+            "t_fit_score": 37.356751370204286,
+            "p_fit_score": 48.62979571499751,
+            "c_fit_score": 50.0
         },
         "MF": {
-            "t_fit_score": 2.0292084528766945,
-            "p_fit_score": 1.0379715873312236,
-            "c_fit_score": 0.85
+            "t_fit_score": 60.949177877429,
+            "p_fit_score": 50.89686098654709,
+            "c_fit_score": 50.0
         }
     },
     "전북 현대 모터스": {
         "DF": {
-            "t_fit_score": 3.0109834205248625,
-            "p_fit_score": 1.0174557626915182,
-            "c_fit_score": 0.85
+            "t_fit_score": 53.46132286995516,
+            "p_fit_score": 46.66479820627803,
+            "c_fit_score": 50.0
         },
         "ETC": {
-            "t_fit_score": 0.6633577604720307,
-            "p_fit_score": 1.037900124602154,
-            "c_fit_score": 0.85
+            "t_fit_score": 29.52167414050822,
+            "p_fit_score": 53.213751868460385,
+            "c_fit_score": 50.0
         },
         "FW": {
-            "t_fit_score": 1.3584955106247163,
-            "p_fit_score": 1.0250444778875176,
-            "c_fit_score": 0.85
+            "t_fit_score": 40.246636771300444,
+            "p_fit_score": 52.17208520179372,
+            "c_fit_score": 50.0
         },
         "MF": {
-            "t_fit_score": 2.0832914796960362,
-            "p_fit_score": 0.9359159867976778,
-            "c_fit_score": 0.85
+            "t_fit_score": 58.996636771300444,
+            "p_fit_score": 35.79035874439462,
+            "c_fit_score": 50.0
         }
     },
     "제주SK FC": {
         "DF": {
-            "t_fit_score": 2.7248734580154457,
-            "p_fit_score": 0.9771098142914276,
-            "c_fit_score": 0.85
+            "t_fit_score": 68.94618834080717,
+            "p_fit_score": 47.02405218100285,
+            "c_fit_score": 50.0
         },
         "ETC": {
-            "t_fit_score": 0.5080645161290323,
-            "p_fit_score": 0.966561767719132,
-            "c_fit_score": 0.85
+            "t_fit_score": 31.278026905829595,
+            "p_fit_score": 43.38565022421525,
+            "c_fit_score": 50.0
         },
         "FW": {
-            "t_fit_score": 1.2183978845749985,
-            "p_fit_score": 0.9406335196612049,
-            "c_fit_score": 0.85
+            "t_fit_score": 38.56502242152467,
+            "p_fit_score": 41.62929745889387,
+            "c_fit_score": 50.0
         },
         "MF": {
-            "t_fit_score": 1.4295679310836162,
-            "p_fit_score": 0.9867776867258597,
-            "c_fit_score": 0.85
+            "t_fit_score": 47.384155455904335,
+            "p_fit_score": 52.067762830094665,
+            "c_fit_score": 50.0
         }
     },
     "포항 스틸러스": {
         "DF": {
-            "t_fit_score": 3.193300893278987,
-            "p_fit_score": 1.085455819080231,
-            "c_fit_score": 0.85
+            "t_fit_score": 56.40881913303438,
+            "p_fit_score": 68.40433482810165,
+            "c_fit_score": 50.0
         },
         "ETC": {
-            "t_fit_score": 0.21661203421654615,
-            "p_fit_score": 1.0049740729776786,
-            "c_fit_score": 0.85
+            "t_fit_score": 16.367713004484308,
+            "p_fit_score": 54.39461883408071,
+            "c_fit_score": 50.0
         },
         "FW": {
-            "t_fit_score": 1.147064246199953,
-            "p_fit_score": 0.9789481121001781,
-            "c_fit_score": 0.85
+            "t_fit_score": 53.40059790732437,
+            "p_fit_score": 40.931738913801695,
+            "c_fit_score": 50.0
         },
         "MF": {
-            "t_fit_score": 1.5338103702862795,
-            "p_fit_score": 1.146732491682049,
-            "c_fit_score": 0.85
+            "t_fit_score": 49.638764324862976,
+            "p_fit_score": 71.5495764823119,
+            "c_fit_score": 50.0
         }
     }
 }
