@@ -639,7 +639,7 @@ def get_ai_analysis_for_pdf(player_hsi, team_template, team_name, player_name, p
     model = get_gemini_model()
     
     if not model:
-        print("⚠️ Gemini 모델 로드 실패, Fallback 사용")
+        print("WARNING: Gemini 모델 로드 실패, Fallback 사용")
         return _generate_fallback_analysis(player_hsi, team_template, team_name, player_name, pos_group, adapt_fit_score)
     
     # 선수 상세 인사이트 로드
@@ -648,7 +648,7 @@ def get_ai_analysis_for_pdf(player_hsi, team_template, team_name, player_name, p
     
     # 인사이트가 없으면 기본값 사용
     if not player_insight:
-        print(f"⚠️ {player_name} 선수 인사이트 없음, 기본값 사용")
+        print(f"WARNING: {player_name} 선수 인사이트 없음, 기본값 사용")
         player_insight = {
             "defensive_style": "데이터 부족",
             "pressing_style": "데이터 부족",
@@ -737,15 +737,15 @@ def get_ai_analysis_for_pdf(player_hsi, team_template, team_name, player_name, p
 ▸ 분석 대상 구단: {team_name}
 ▸ 종합 적합도: {adapt_fit_score:.1f}/100 (HSI 알고리즘 기반)
 
-▸ 핵심 지표 (K리그 2024 시즌, 베이지안 보정 + 퍼센타일 변환)
+핵심 지표 (K리그 2024 시즌, 베이지안 보정 + 퍼센타일 변환)
   → T-Fit (전술 실행력): {t_pctl:.1f}%ile | 리그 내 {t_league_rank}
-     · 팀 평균 대비: {t_diff:+.1f}p ({("✓ 팀 기준치 초과" if t_diff > 5 else "△ 팀 평균 수준" if t_diff > -5 else "✗ 팀 기준치 미달")})
+     · 팀 평균 대비: {t_diff:+.1f}p ({("ABOVE: 팀 기준치 초과" if t_diff > 5 else "FAIR: 팀 평균 수준" if t_diff > -5 else "BELOW: 팀 기준치 미달")})
      · 수비 스타일: {player_insight.get('defensive_style', '데이터 부족')}
      · 압박 스타일: {player_insight.get('pressing_style', '데이터 부족')}
      · 압박 강도: {player_insight.get('pressing_intensity_pct', 'N/A')}
   
   → P-Fit (피지컬 지속력): {p_pctl:.1f}%ile | 리그 내 {p_league_rank}
-     · 팀 평균 대비: {p_diff:+.1f}p ({("✓ 여름철 강점" if p_diff > 5 else "△ 무난한 수준" if p_diff > -5 else "✗ 여름철 주의")})
+     · 팀 평균 대비: {p_diff:+.1f}p ({("STRONG: 여름철 강점" if p_diff > 5 else "MODERATE: 무난한 수준" if p_diff > -5 else "WEAK: 여름철 주의")})
      · 여름철 프로파일: {player_insight.get('summer_profile', '데이터 부족')}
      · 혹서기 유지율: {player_insight.get('summer_retention_pct', 'N/A')}
   
@@ -845,9 +845,9 @@ def get_ai_analysis_for_pdf(player_hsi, team_template, team_name, player_name, p
 4.1 종합 영입 의견 (Final Verdict)
   당신의 최종 판단을 명확히 제시하세요:
   
-  ✓ 즉시 영입 추천 (Immediate Sign)
-  △ 조건부 영입 (Conditional Sign)
-  ✗ 영입 보류 (Pass)
+  [RECOMMEND] 즉시 영입 추천 (Immediate Sign)
+  [CONDITIONAL] 조건부 영입 (Conditional Sign)
+  [PASS] 영입 보류 (Pass)
 
 4.2 계약 조건 제안
   • 연봉 범위 추정
@@ -864,12 +864,13 @@ def get_ai_analysis_for_pdf(player_hsi, team_template, team_name, player_name, p
 【작성 지침 (STRICT GUIDELINES)】
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-✓ 어조: 단호하고 전문적 ("~입니다", "~해야 합니다" 사용)
-✓ 근거: 모든 판단에 구체적 수치와 백분위 언급
-✓ 깊이: 단순 나열 금지, 인과관계와 전술적 맥락 제시
-✓ 실용성: 추상적 평가 대신 실행 가능한 액션 아이템 제시
-✓ 균형: 강점과 약점을 모두 명시하되, 해결책 제시
-✓ 분량: 최소 1200자 이상 (유럽 스카우팅 보고서 표준)
+[작성 가이드라인]
+- 어조: 단호하고 전문적 ("~입니다", "~해야 합니다" 사용)
+- 근거: 모든 판단에 구체적 수치와 백분위 언급
+- 깊이: 단순 나열 금지, 인과관계와 전술적 맥락 제시
+- 실용성: 추상적 평가 대신 실행 가능한 액션 아이템 제시
+- 균형: 강점과 약점을 모두 명시하되, 해결책 제시
+- 분량: 최소 1200자 이상 (유럽 스카우팅 보고서 표준)
 
 이제 위 프레임워크에 따라 **유럽 빅리그 수준의 전술 분석 보고서**를 작성하세요.
 """
@@ -886,11 +887,11 @@ def get_ai_analysis_for_pdf(player_hsi, team_template, team_name, player_name, p
         # 응답 확인
         if hasattr(response, 'text') and response.text:
             result_text = response.text.strip()
-            print(f"✓ Gemini AI 분석 완료 ({len(result_text)} 자)")
+            print(f"INFO: Gemini AI 분석 완료 ({len(result_text)} 자)")
             
             # 너무 짧은 응답은 오류로 간주
             if len(result_text) < 500:
-                print(f"⚠️ Gemini 응답이 너무 짧음 ({len(result_text)}자). Fallback 사용")
+                print(f"WARNING: Gemini 응답이 너무 짧음 ({len(result_text)}자). Fallback 사용")
                 return _generate_fallback_analysis(player_hsi, team_template, team_name, player_name, pos_group, adapt_fit_score)
             
             return result_text
@@ -1065,14 +1066,14 @@ def create_pdf(file_path, player_hsi, team_template, chart_path, ai_text, team_n
             try:
                 pdfmetrics.registerFont(TTFont(font_name, font_path))
                 korean_font = font_name
-                print(f"✓ 한글 폰트 로드 성공: {font_name} ({font_path})")
+                print(f"INFO: 한글 폰트 로드 성공: {font_name} ({font_path})")
                 break
             except Exception as e:
                 print(f"✗ 폰트 로드 실패: {font_name} - {e}")
                 continue
     
     if korean_font == 'Helvetica':
-        st.warning("⚠️ 한글 폰트를 찾지 못해 기본 폰트로 생성합니다. 한글이 깨질 수 있습니다.")
+        st.warning("한글 폰트를 찾지 못해 기본 폰트로 생성합니다. 한글이 깨질 수 있습니다.")
 
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name='TitleStyle', fontName=korean_font, fontSize=24, leading=28, textColor=navy))
@@ -1132,11 +1133,11 @@ st.sidebar.markdown("---")
 
 # Gemini AI 연결 상태 표시
 if GENAI_AVAILABLE and os.getenv("GEMINI_API_KEY"):
-    st.sidebar.success("✅ Gemini AI 엔진 연결 성공")
+    st.sidebar.success("Gemini AI 엔진 연결 성공")
 elif GENAI_AVAILABLE:
-    st.sidebar.warning("⚠️ Gemini API 키 미설정 (기본 분석만 제공)")
+    st.sidebar.warning("Gemini API 키 미설정 (기본 분석만 제공)")
 else:
-    st.sidebar.error("❌ google-generativeai 라이브러리 미설치")
+    st.sidebar.error("google-generativeai 라이브러리 미설치")
 
 st.sidebar.markdown("---")
 
@@ -1555,7 +1556,7 @@ if pdf_button:
     gemini_key = os.getenv("GEMINI_API_KEY")
     
     if not GENAI_AVAILABLE:
-        st.warning("⚠️ google-generativeai 라이브러리가 설치되지 않았습니다. `pip install google-generativeai`를 실행해주세요.")
+        st.warning("google-generativeai 라이브러리가 설치되지 않았습니다. 'pip install google-generativeai'를 실행해주세요.")
     
     if not gemini_key and GENAI_AVAILABLE:
         st.info("💡 Gemini API 키가 설정되지 않았습니다. AI 분석 없이 기본 통계 분석만 제공됩니다.")
@@ -1638,7 +1639,7 @@ if pdf_button:
             
             # AI 분석 결과 확인
             if not ai_analysis_text or len(ai_analysis_text.strip()) < 100:
-                st.warning("⚠️ AI 분석 생성에 실패했거나 내용이 부족합니다. Fallback 분석을 사용합니다.")
+                st.warning("AI 분석 생성에 실패했거나 내용이 부족합니다. Fallback 분석을 사용합니다.")
                 ai_analysis_text = _generate_fallback_analysis(
                     player_hsi_for_score,
                     team_template_for_score,
