@@ -1046,10 +1046,18 @@ def create_pdf(file_path, player_hsi, team_template, chart_path, ai_text, team_n
     doc = SimpleDocTemplate(file_path, pagesize=letter)
     story = []
     
+    # 한글 폰트 설정 (배포 환경 호환)
     font_candidates = [
+        # 1순위: 배포 환경 (Streamlit Cloud - apt로 설치된 나눔폰트)
+        ('NanumGothic', '/usr/share/fonts/truetype/nanum/NanumGothic.ttf'),
+        ('NanumBarunGothic', '/usr/share/fonts/truetype/nanum/NanumBarunGothic.ttf'),
+        # 2순위: macOS 시스템 폰트
         ('AppleGothic', '/System/Library/Fonts/AppleGothic.ttf'),
         ('AppleGothic', '/System/Library/Fonts/Supplemental/AppleGothic.ttf'),
         ('NotoSansGothic', '/System/Library/Fonts/Supplemental/NotoSansGothic-Regular.ttf'),
+        # 3순위: Windows 시스템 폰트
+        ('Malgun', 'C:\\Windows\\Fonts\\malgun.ttf'),
+        ('Gulim', 'C:\\Windows\\Fonts\\gulim.ttc'),
     ]
     korean_font = 'Helvetica'
     for font_name, font_path in font_candidates:
@@ -1057,11 +1065,14 @@ def create_pdf(file_path, player_hsi, team_template, chart_path, ai_text, team_n
             try:
                 pdfmetrics.registerFont(TTFont(font_name, font_path))
                 korean_font = font_name
+                print(f"✓ 한글 폰트 로드 성공: {font_name} ({font_path})")
                 break
-            except Exception:
+            except Exception as e:
+                print(f"✗ 폰트 로드 실패: {font_name} - {e}")
                 continue
+    
     if korean_font == 'Helvetica':
-        st.warning("한글 폰트를 찾지 못해 기본 폰트로 생성합니다.")
+        st.warning("⚠️ 한글 폰트를 찾지 못해 기본 폰트로 생성합니다. 한글이 깨질 수 있습니다.")
 
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name='TitleStyle', fontName=korean_font, fontSize=24, leading=28, textColor=navy))
