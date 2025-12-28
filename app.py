@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import json
@@ -373,145 +372,580 @@ def compute_city_based_c_fit(
         meta = None
     return float(c_fit), p_label, h_label, "", meta
 
-def local_css():
-    css = """
+def setup_design_system():
+    # 1. Theme State
+    if 'theme_mode' not in st.session_state:
+        st.session_state.theme_mode = 'Dark'
+    
+    theme_mode = st.session_state.theme_mode
+
+    # 2. Color Palette (Pro Scout Dashboard)
+    if theme_mode == 'Dark':
+        bg_color = "#09090B"             # Main Background
+        sidebar_bg = "#121214"           # Sidebar Background
+        card_bg = "#18181B"              # Component Background
+        
+        text_primary = "#FFFFFF"         # Pure White
+        text_secondary = "#A1A1AA"       # Zinc-400
+        text_tertiary = "#71717A"        # Zinc-500
+        
+        border_color = "#27272A"         # Zinc-800
+        input_bg = "#27272A"
+        
+        accent_color = "#FE3D67"         # K-League/Brand Red
+        hover_bg = "#27272A"
+        
+        metric_color = "#FFFFFF"
+        tick_color = "#71717A"
+        grid_color = "#27272A"
+        polar_bgcolor = "rgba(0,0,0,0)"
+    else:
+        bg_color = "#F4F4F5"             # Zinc-100
+        sidebar_bg = "#FFFFFF"           # White
+        card_bg = "#FFFFFF"
+        
+        text_primary = "#09090B"
+        text_secondary = "#71717A"
+        text_tertiary = "#A1A1AA"
+        
+        border_color = "#E4E4E7"         # Zinc-200
+        input_bg = "#F4F4F5"
+        
+        accent_color = "#FE3D67"
+        hover_bg = "#F4F4F5"
+        
+        metric_color = "#09090B"
+        tick_color = "#71717A"
+        grid_color = "#E4E4E7"
+        polar_bgcolor = "rgba(255,255,255,0.8)"
+
+    # 3. CSS Injection
+    css = f"""
     <style>
-    /* ===== ANYONE COMPANY 브랜드 테마 ===== */
-    /* Primary: #FE3D67 (핑크) → #FF7031 (오렌지) */
-    /* Secondary: #FF3B65 (핑크) → #872B95 (퍼플) */
+    @import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css");
     
-    /* 메인 배경 - 다크 그라데이션 */
-    .stApp, [data-testid="stAppViewContainer"] {
-        background: linear-gradient(135deg, #1a0a1e 0%, #0f0a1a 50%, #0a0f1a 100%) !important;
-    }
+    html, body, [class*="css"] {{
+        font-family: 'Pretendard', sans-serif !important;
+    }}
     
-    /* 모든 텍스트를 흰색으로 */
-    .stApp, .stApp * {
-        color: #ffffff !important;
-    }
+    /* --- LAYOUT: FIXED 390px SIDEBAR --- */
+    [data-testid="stSidebar"] {{
+        min-width: 390px !important;
+        max-width: 390px !important;
+        background-color: {sidebar_bg} !important;
+        border-right: 1px solid {border_color} !important;
+    }}
+
+    /* Sidebar 내부 여백(좌우) 최적화: 그리드가 "꽉 차" 보이도록 */
+    [data-testid="stSidebar"] [data-testid="stSidebarContent"] {{
+        padding-left: 14px !important;
+        padding-right: 14px !important;
+    }}
     
-    /* 사이드바 배경 - 브랜드 컬러 힌트 */
-    [data-testid="stSidebar"], [data-testid="stSidebar"] > div {
-        background: linear-gradient(180deg, #1e0a24 0%, #0f0a1a 100%) !important;
-        border-right: 1px solid rgba(254, 61, 103, 0.3) !important;
-    }
+    .stApp {{
+        background-color: {bg_color} !important;
+        color: {text_primary} !important;
+    }}
     
-    /* 사이드바 토글 버튼 - 브랜드 그라데이션 */
-    [data-testid="collapsedControl"] {
-        background: linear-gradient(135deg, #FE3D67 0%, #FF7031 100%) !important;
-    }
-    [data-testid="collapsedControl"] svg {
-        stroke: #ffffff !important;
-    }
+    /* --- SIDEBAR: TEAM SELECTOR (GRID CARD v9 - true full width + perfect centering) --- */
+    /* 위젯 라벨(예: 'Select Club')은 숨기고, 옵션 카드(label)만 스타일링 */
+    [data-testid="stSidebar"] .stRadio > label,
+    [data-testid="stSidebar"] .stRadio [data-testid="stWidgetLabel"] {{
+        display: none !important;
+    }}
+
+    /* 라디오/컨테이너 자체가 폭 100%를 가지도록 강제 (가로폭 꽉 차 보이게) */
+    [data-testid="stSidebar"] .element-container:has(.stRadio),
+    [data-testid="stSidebar"] .stRadio {{
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }}
+
+    /* 라디오 그룹 컨테이너 */
+    [data-testid="stSidebar"] .stRadio [role="radiogroup"] {{
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px !important;
+        padding: 0 !important;
+        margin-top: 4px !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        justify-items: stretch !important;
+        box-sizing: border-box !important;
+    }}
+
+    /* 홀수 개일 때 마지막 카드가 반쪽으로 남지 않도록 마지막 옵션(label)을 2칸(span) */
+    /* last-child가 아닌 last-of-type 기반으로 더 안전하게 매칭 */
+    [data-testid="stSidebar"] .stRadio [role="radiogroup"] > label:nth-last-of-type(1):nth-child(odd) {{
+        /* 마지막(홀수) 항목은 왼쪽 1열에 고정 (2열은 비워둠) */
+        grid-column: 1 / 2 !important;
+        justify-self: stretch !important;
+    }}
+    /* 라디오 전체 래퍼도 폭 100% */
+    [data-testid="stSidebar"] .stRadio {{
+        width: 100% !important;
+    }}
     
-    /* ===== 드롭다운 (검정 텍스트) ===== */
-    [data-baseweb="select"] > div {
-        background-color: #ffffff !important;
-        color: #000000 !important;
-        border: 2px solid #FE3D67 !important;
-        border-radius: 8px !important;
-    }
-    [data-baseweb="select"] > div * {
-        color: #000000 !important;
-    }
-    div[role="listbox"], div[role="listbox"] *,
-    [data-baseweb="popover"], [data-baseweb="popover"] *,
-    [data-baseweb="menu"], [data-baseweb="menu"] * {
-        background-color: #ffffff !important;
-        color: #000000 !important;
-    }
-    
-    /* ===== 버튼 스타일 - 브랜드 그라데이션 ===== */
-    .stButton > button {
-        background: linear-gradient(135deg, #FE3D67 0%, #FF7031 100%) !important;
-        color: #ffffff !important;
-        border: none !important;
-        border-radius: 8px !important;
-        font-weight: 600 !important;
-    }
-    .stButton > button:hover {
-        background: linear-gradient(135deg, #FF7031 0%, #872B95 100%) !important;
-        box-shadow: 0 4px 20px rgba(254, 61, 103, 0.4) !important;
-    }
-    
-    /* ===== 테이블 스타일 ===== */
-    .stTable, .stDataFrame {
-        background-color: rgba(30, 10, 36, 0.8) !important;
-    }
-    .stTable th, .stDataFrame th {
-        background: linear-gradient(135deg, #FE3D67 0%, #872B95 100%) !important;
-        color: #ffffff !important;
-    }
-    .stTable td, .stDataFrame td {
-        background-color: rgba(15, 10, 26, 0.9) !important;
-        color: #ffffff !important;
-        border-bottom: 1px solid rgba(254, 61, 103, 0.2) !important;
-    }
-    
-    /* ===== 메트릭 카드 ===== */
-    [data-testid="stMetricValue"] {
-        color: #FE3D67 !important;
-        font-weight: 700 !important;
-    }
-    [data-testid="stMetricLabel"], [data-testid="stMetricDelta"] {
-        color: #ffffff !important;
-    }
-    
-    /* ===== 탭 스타일 ===== */
-    .stTabs [data-baseweb="tab-list"] {
-        background-color: rgba(30, 10, 36, 0.6) !important;
+    /* 옵션 카드(label): radiogroup 내부만 타겟 */
+    [data-testid="stSidebar"] .stRadio [role="radiogroup"] > label {{
+        background-color: {card_bg} !important;
+        border: 1px solid {border_color} !important;
         border-radius: 10px !important;
-    }
-    .stTabs [data-baseweb="tab"] {
-        color: #94a3b8 !important;
-    }
-    .stTabs [aria-selected="true"] {
-        color: #ffffff !important;
-        background: linear-gradient(135deg, #FE3D67 0%, #FF7031 100%) !important;
+        padding: 0 8px !important;
+        margin: 0 !important;
+        height: 50px !important;
+        width: 100% !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        cursor: pointer !important;
+        box-shadow: none !important;
+        position: relative !important;
+        overflow: hidden !important;
+        text-align: center !important;
+        box-sizing: border-box !important;
+        min-width: 0 !important;
+    }}
+    
+    /* 내부 라디오 컨트롤(동그라미) 숨기기 */
+    [data-testid="stSidebar"] .stRadio [role="radiogroup"] > label > div:first-child {{
+        display: none !important;
+        width: 0 !important;
+        margin: 0 !important;
+    }}
+    
+    /* 텍스트 컨테이너 */
+    [data-testid="stSidebar"] .stRadio [role="radiogroup"] > label > div:last-child {{
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+        height: 100% !important;
+    }}
+
+    /* Streamlit 마크다운 래퍼가 기본 패딩/정렬을 갖는 경우가 있어 완전 리셋 */
+    [data-testid="stSidebar"] .stRadio [role="radiogroup"] > label div[data-testid="stMarkdownContainer"] {{
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+        text-align: center !important;
+    }}
+    
+    /* 텍스트 */
+    [data-testid="stSidebar"] .stRadio [role="radiogroup"] > label p {{
+        font-size: 0.92rem !important;
+        font-weight: 400 !important;  /* 기본은 가볍게 */
+        color: {text_secondary} !important;
+        margin: 0 !important;
+        text-align: center !important;
+        line-height: 1.15 !important;
+        padding: 0 !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        width: 100% !important;
+        letter-spacing: -0.02em !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        height: 100% !important;
+        -webkit-font-smoothing: antialiased !important;
+        text-rendering: optimizeLegibility !important;
+    }}
+    
+    /* Hover */
+    [data-testid="stSidebar"] .stRadio [role="radiogroup"] > label:hover {{
+        border-color: {text_secondary} !important;
+        background-color: {hover_bg} !important;
+    }}
+    [data-testid="stSidebar"] .stRadio [role="radiogroup"] > label:hover p {{
+        color: {text_primary} !important;
+    }}
+    
+    /* Selected */
+    [data-testid="stSidebar"] .stRadio [role="radiogroup"] > label:has(input:checked) {{
+        background-color: {input_bg} !important;
+        border-color: {text_primary} !important;
+        box-shadow: inset 0 0 0 1.5px {text_primary} !important;
+    }}
+    [data-testid="stSidebar"] .stRadio [role="radiogroup"] > label:has(input:checked) p {{
+        color: {text_primary} !important;
+        font-weight: 500 !important;  /* 선택 시만 살짝 */
+    }}
+    
+    /* --- COMPONENT: BUTTONS --- */
+    .stButton > button {{
+        width: 100% !important;
         border-radius: 8px !important;
-    }
+        padding: 0.75rem 1rem !important;
+        font-weight: 600 !important;
+        border: 1px solid {border_color} !important;
+        background-color: {input_bg} !important;
+        color: {text_primary} !important;
+        transition: all 0.2s !important;
+    }}
+    .stButton > button:hover {{
+        border-color: {text_secondary} !important;
+        background-color: {border_color} !important;
+    }}
     
-    /* ===== Expander ===== */
-    .streamlit-expanderHeader {
-        background-color: rgba(30, 10, 36, 0.8) !important;
-        color: #ffffff !important;
-        border: 1px solid rgba(254, 61, 103, 0.3) !important;
-    }
-    .streamlit-expanderContent {
-        background-color: rgba(15, 10, 26, 0.9) !important;
-    }
+    /* Primary Action (PDF) - Minimal Style */
+    button[kind="primary"] {{
+        background-color: {text_primary} !important;
+        border: 1px solid {text_primary} !important;
+        color: {bg_color} !important;
+        box-shadow: none !important;
+        transition: all 0.2s ease !important;
+    }}
+    button[kind="primary"]:hover {{
+        background-color: {text_secondary} !important;
+        border-color: {text_secondary} !important;
+        color: {bg_color} !important;
+        box-shadow: none !important;
+        opacity: 1 !important;
+    }}
+    button[kind="primary"] p {{
+        color: {bg_color} !important;
+    }}
+    button[kind="primary"]:active {{
+        transform: scale(0.98) !important;
+    }}
     
-    /* ===== 알림 박스 ===== */
-    .stAlert {
-        background-color: rgba(30, 10, 36, 0.8) !important;
-        color: #ffffff !important;
-        border-left: 4px solid #FE3D67 !important;
-    }
+    /* --- COMPONENT: INPUTS --- */
+    [data-baseweb="select"] > div, .stTextInput > div > div {{
+        background-color: {input_bg} !important;
+        border-color: {border_color} !important;
+        color: {text_primary} !important;
+        border-radius: 8px !important;
+    }}
     
-    /* ===== 구분선 - 그라데이션 ===== */
-    hr {
-        border: none !important;
-        height: 1px !important;
-        background: linear-gradient(90deg, transparent, #FE3D67, #FF7031, transparent) !important;
-    }
+    /* --- TABS & OTHERS --- */
+    .stTabs [data-baseweb="tab-list"] {{
+        gap: 8px;
+        border-bottom: none !important;
+    }}
+    .stTabs [data-baseweb="tab"] {{
+        background-color: transparent; 
+        border: 1px solid {border_color}; 
+        border-radius: 99px;
+        padding: 6px 16px;
+        color: {text_secondary};
+        height: auto !important;
+    }}
+    .stTabs [aria-selected="true"] {{
+        background-color: {text_primary} !important;
+        color: {bg_color} !important;
+        border-color: {text_primary} !important;
+    }}
+    /* Remove Highlight Bar */
+    .stTabs [data-baseweb="tab-highlight"] {{
+        display: none !important;
+    }}
+    .stTabs [data-baseweb="tab-border"] {{
+        display: none !important;
+    }}
     
-    /* ===== 캡션 ===== */
-    .stCaption, small {
-        color: #FF7031 !important;
-    }
-    
-    /* ===== 링크 색상 ===== */
-    a, a:visited {
-        color: #FE3D67 !important;
-    }
-    a:hover {
-        color: #FF7031 !important;
-    }
+    /* Utils */
+    hr {{ border-color: {border_color} !important; margin: 1.5rem 0 !important; }}
+    .metric-card, .stPlotlyChart {{
+        background-color: {card_bg} !important;
+        border: 1px solid {border_color} !important;
+        border-radius: 12px !important;
+        padding: 20px !important;
+        margin-bottom: 24px !important;
+    }}
+
+    /* --- TAB2: TEAM RANKING (Scout-friendly UI) --- */
+    .rank-grid {{
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        margin: 12px 0 18px 0;
+    }}
+    @media (max-width: 1200px) {{
+        .rank-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+    }}
+    @media (max-width: 820px) {{
+        .rank-grid {{ grid-template-columns: 1fr; }}
+    }}
+    .rank-card {{
+        background: {card_bg};
+        border: 1px solid {border_color};
+        border-radius: 14px;
+        padding: 16px 16px 14px 16px;
+    }}
+    .rank-card.is-selected {{
+        border-color: {text_primary};
+        box-shadow: inset 0 0 0 1px {text_primary};
+    }}
+    .rank-head {{
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 10px;
+    }}
+    .rank-badge {{
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: {text_primary};
+        letter-spacing: -0.02em;
+    }}
+    .grade-chip {{
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 4px 10px;
+        border-radius: 999px;
+        border: 1px solid {border_color};
+        font-size: 0.78rem;
+        font-weight: 600;
+        line-height: 1;
+        color: {text_secondary};
+        background: {input_bg};
+        white-space: nowrap;
+    }}
+    .rank-name {{
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: {text_primary};
+        letter-spacing: -0.02em;
+        margin: 0;
+    }}
+    .rank-meta {{
+        font-size: 0.82rem;
+        color: {text_secondary};
+        margin-top: 2px;
+    }}
+    .score-line {{
+        margin-top: 12px;
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 10px;
+    }}
+    .score-value {{
+        font-size: 1.6rem;
+        font-weight: 800;
+        color: {text_primary};
+        letter-spacing: -0.03em;
+        line-height: 1;
+    }}
+    .score-unit {{
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: {text_tertiary};
+        margin-left: 4px;
+    }}
+    .score-bar {{
+        margin-top: 10px;
+        height: 6px;
+        width: 100%;
+        border-radius: 999px;
+        background: {border_color};
+        overflow: hidden;
+    }}
+    .score-bar > span {{
+        display: block;
+        height: 100%;
+        border-radius: 999px;
+    }}
+    .rank-list {{
+        background: {card_bg};
+        border: 1px solid {border_color};
+        border-radius: 14px;
+        padding: 8px 0;
+        margin-top: 10px;
+    }}
+    .rank-row {{
+        display: grid;
+        grid-template-columns: 52px 1fr 120px 72px;
+        gap: 10px;
+        align-items: center;
+        padding: 10px 14px;
+    }}
+    .rank-row + .rank-row {{
+        border-top: 1px solid {border_color};
+    }}
+    .rank-row:hover {{
+        background: {hover_bg};
+    }}
+    .rank-rank {{
+        font-size: 0.85rem;
+        font-weight: 700;
+        color: {text_primary};
+        text-align: center;
+    }}
+    .rank-player {{
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+    }}
+    .rank-player .nm {{
+        font-size: 0.92rem;
+        font-weight: 600;
+        color: {text_primary};
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }}
+    .rank-player .pos {{
+        font-size: 0.8rem;
+        color: {text_secondary};
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }}
+    .rank-score {{
+        font-size: 0.9rem;
+        font-weight: 700;
+        color: {text_primary};
+        text-align: right;
+        white-space: nowrap;
+    }}
+    .rank-grade {{
+        text-align: right;
+    }}
+    .rank-row.is-selected {{
+        background: {input_bg};
+        box-shadow: inset 3px 0 0 0 {accent_color};
+    }}
+    .rank-row.is-selected .rank-player .nm {{
+        color: {accent_color} !important;
+    }}
+
+    /* --- TAB3: DETAIL COMPARE (Scout-friendly list) --- */
+    .compare-list {{
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-top: 10px;
+    }}
+    .compare-row {{
+        background: {card_bg};
+        border: 1px solid {border_color};
+        border-radius: 14px;
+        padding: 14px 14px 12px 14px;
+    }}
+    .compare-row:hover {{
+        background: {hover_bg};
+    }}
+    .compare-row.is-selected {{
+        background: {input_bg};
+        box-shadow: inset 3px 0 0 0 {accent_color};
+        border-color: {border_color};
+    }}
+    .compare-row.is-selected .compare-center .nm {{
+        color: {accent_color};
+    }}
+    .compare-top {{
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+    }}
+    .compare-badge {{
+        width: 52px;
+        height: 28px;
+        border-radius: 999px;
+        border: 1px solid {border_color};
+        background: {card_bg};
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.82rem;
+        font-weight: 800;
+        color: {text_primary};
+        flex: 0 0 auto;
+    }}
+    .compare-center {{
+        flex: 1;
+        min-width: 0;
+    }}
+    .compare-center .nm {{
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: {text_primary};
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        letter-spacing: -0.02em;
+    }}
+    .compare-center .pos {{
+        font-size: 0.8rem;
+        color: {text_secondary};
+        margin-top: 2px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }}
+    .compare-right {{
+        text-align: right;
+        white-space: nowrap;
+        flex: 0 0 auto;
+    }}
+    .compare-right .score {{
+        font-size: 1.2rem;
+        font-weight: 800;
+        color: {text_primary};
+        letter-spacing: -0.03em;
+        line-height: 1;
+    }}
+    .compare-right .score span {{
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: {text_tertiary};
+        margin-left: 4px;
+    }}
+    .compare-metrics {{
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 12px;
+    }}
+    @media (max-width: 900px) {{
+        .compare-metrics {{ grid-template-columns: 1fr; }}
+    }}
+    .metric-mini .lbl {{
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 10px;
+        font-size: 0.75rem;
+        color: {text_secondary};
+        margin-bottom: 6px;
+    }}
+    .metric-mini .lbl strong {{
+        color: {text_primary};
+        font-weight: 600;
+    }}
+    .metric-mini .bar {{
+        height: 6px;
+        width: 100%;
+        border-radius: 999px;
+        background: {border_color};
+        overflow: hidden;
+    }}
+    .metric-mini .bar > span {{
+        display: block;
+        height: 100%;
+        border-radius: 999px;
+    }}
+
+    header, footer {{ display: none !important; }}
     </style>
     """
     st.markdown(css, unsafe_allow_html=True)
+    return tick_color, grid_color, polar_bgcolor, text_primary, text_secondary, text_tertiary, bg_color, card_bg, border_color, input_bg, metric_color, accent_color
 
-local_css()
+tick_color, grid_color, polar_bgcolor, text_primary, text_secondary, text_tertiary, bg_color, card_bg, border_color, input_bg, metric_color, accent_color = setup_design_system()
+text_color = text_primary
 
 # --- 데이터 로드 ---
 hsi_df, templates, foreigners_df = load_data()
@@ -601,7 +1035,17 @@ def get_all_player_scores(team_name, templates, hsi_df, foreigners_df):
         except:
             continue
     
-    return sorted(scores, key=lambda x: x['score'], reverse=True)
+    # 이름 중복 제거: 같은 한글명(동명이인/데이터 중복)으로 여러 번 등장하는 경우,
+    # 스카우터 UI에서는 "이름 1개 = 1개 엔트리"가 되도록 최고 점수 1개만 남깁니다.
+    best_by_name = {}
+    for s in scores:
+        nm = str(s.get("name", "")).strip()
+        if not nm:
+            continue
+        if nm not in best_by_name or float(s.get("score", 0)) > float(best_by_name[nm].get("score", 0)):
+            best_by_name[nm] = s
+
+    return sorted(best_by_name.values(), key=lambda x: x['score'], reverse=True)
 
 def get_gemini_model():
     """Gemini 무료 모델 자동 선택"""
@@ -1118,37 +1562,40 @@ def create_pdf(file_path, player_hsi, team_template, chart_path, ai_text, team_n
     doc.build(story)
 
 # ============================================================
-# 사이드바
+# 사이드바 (New Scouter Layout 390px Optimized)
 # ============================================================
-st.sidebar.markdown("""
-<div style="text-align: center; padding: 1rem 0;">
-    <h1 style="font-size: 1.5rem; font-weight: 800; margin: 0; background: linear-gradient(135deg, #FE3D67, #FF7031); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
-        K-Scout
-    </h1>
-    <p style="color: #FF7031; font-size: 0.9rem; margin: 0.2rem 0 0 0; font-weight: 500;">Adapt-Fit AI System</p>
-    <p style="color: #872B95; font-size: 0.7rem; margin: 0.1rem 0 0 0;">ANYONE COMPANY</p>
+
+# 1. Branding (Clean)
+st.sidebar.markdown(f"""
+<div style="padding: 1rem 0 0.5rem 0;">
+    <h1 style="font-size: 1.2rem; font-weight: 800; margin: 0; color: {text_primary}; letter-spacing: -0.01em;">K-SCOUT PRO</h1>
+    <p style="font-size: 0.75rem; color: {text_tertiary}; margin: 2px 0 0 0;">Advanced Player Adaptation Analysis</p>
 </div>
 """, unsafe_allow_html=True)
-st.sidebar.markdown("---")
 
-# Gemini AI 연결 상태 표시
 if GENAI_AVAILABLE and os.getenv("GEMINI_API_KEY"):
-    st.sidebar.success("Gemini AI 엔진 연결 성공")
-elif GENAI_AVAILABLE:
-    st.sidebar.warning("Gemini API 키 미설정 (기본 분석만 제공)")
+    st.sidebar.caption("🟢 AI Engine Active")
 else:
-    st.sidebar.error("google-generativeai 라이브러리 미설치")
+    st.sidebar.caption("🔴 AI Engine Offline")
 
-st.sidebar.markdown("---")
+st.sidebar.markdown(f"<hr style='margin: 1rem 0; border-color: {border_color};'>", unsafe_allow_html=True)
 
-# 팀 선택
-team_list = list(templates.keys())
-client_team = st.sidebar.selectbox("분석 대상 구단", team_list)
+# 2. PDF Action (Top Priority)
+st.sidebar.markdown(f"<div style='font-size: 0.75rem; font-weight: 600; color: {text_secondary}; margin-bottom: 8px; letter-spacing: 0.05em;'>ACTIONS</div>", unsafe_allow_html=True)
+pdf_button = st.sidebar.button("📄 Generate PDF Report", key="generate_pdf_primary", type="primary", use_container_width=True)
 
-# 선수 선택
-foreign_player_names = foreigners_df['player_name_ko'].unique()
-player_list = hsi_df[hsi_df['player_name_ko'].isin(foreign_player_names)]['player_name_ko'].unique()
-selected_player_name = st.sidebar.selectbox("대상 외국인 선수", player_list)
+st.sidebar.markdown(f"<div style='height: 24px'></div>", unsafe_allow_html=True)
+
+# 3. Scouting Target (Player)
+st.sidebar.markdown(f"<div style='font-size: 0.75rem; font-weight: 600; color: {text_secondary}; margin-bottom: 8px; letter-spacing: 0.05em;'>SCOUTING TARGET</div>", unsafe_allow_html=True)
+foreign_player_names = sorted(foreigners_df['player_name_ko'].unique())
+selected_player_name = st.sidebar.selectbox(
+    "Select Player",
+    foreign_player_names,
+    index=0 if len(foreign_player_names) > 0 else None,
+    placeholder="Search player...",
+    label_visibility="collapsed"
+)
 
 # 선택 선수의 구단(동명이인 구분/매핑 UI용)
 selected_player_club = ""
@@ -1160,26 +1607,84 @@ try:
 except Exception:
     selected_player_club = ""
 
+if selected_player_club:
+    st.sidebar.caption(f"Current Club: {selected_player_club}")
+
+st.sidebar.markdown(f"<div style='height: 24px'></div>", unsafe_allow_html=True)
+
+# 4. Context (Team Selector - Nav List Style)
+st.sidebar.markdown(f"<div style='font-size: 0.75rem; font-weight: 600; color: {text_secondary}; margin-bottom: 8px; letter-spacing: 0.05em;'>ANALYSIS CLUB</div>", unsafe_allow_html=True)
+
+# 2024 Ranking Order
+priority_order = [
+    "울산 HD FC", "강원FC", "FC서울", "수원FC", 
+    "포항 스틸러스", "제주SK FC", "대전 하나 시티즌", "광주FC", 
+    "전북 현대 모터스", "대구FC", "인천 유나이티드"
+]
+existing_teams = list(templates.keys())
+# 김천 상무 제외 필터링
+team_list = [t for t in existing_teams if "김천" not in t]
+team_list = sorted(team_list, key=lambda x: priority_order.index(x) if x in priority_order else 999)
+
+team_display_map = {
+    "제주SK FC": "제주 SK FC",
+    "강원FC": "강원 FC",
+    "광주FC": "광주 FC",
+    "대구FC": "대구 FC",
+    "수원FC": "수원 FC",
+    "FC서울": "FC 서울"
+}
+
+# [NEW] 선택 상태 표시(즉시 반영): placeholder를 위에 만들고, 라디오 선택값으로 채웁니다.
+target_box = st.sidebar.empty()
+
+# 이전 선택값이 옵션에 없으면(예: 김천 제거 등) 안전하게 첫 항목으로 보정
+if team_list and st.session_state.get("client_team_selector") not in team_list:
+    st.session_state["client_team_selector"] = team_list[0]
+
+# Navigation Style Grid (styled by CSS)
+client_team = st.sidebar.radio(
+    "Select Club",
+    team_list,
+    format_func=lambda x: team_display_map.get(x, x),
+    label_visibility="collapsed",
+    key="client_team_selector",
+)
+
+current_team_display = team_display_map.get(client_team, client_team)
+target_box.markdown(
+    f"""
+<div style="
+    margin-bottom: 12px; 
+    padding: 10px 14px; 
+    background: {input_bg}; 
+    border: 1px solid {accent_color}60; 
+    border-radius: 8px; 
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center;
+">
+    <span style="font-size: 0.75rem; color: {text_secondary}; font-weight: 500;">TARGET</span>
+    <span style="font-size: 0.9rem; font-weight: 700; color: {text_primary};">{current_team_display}</span>
+</div>
+""",
+    unsafe_allow_html=True,
+)
+
 st.sidebar.markdown("---")
 
-# 지표 설명
-with st.sidebar.expander("HSI 지표 가이드"):
+# 5. Advanced Settings & Theme
+with st.sidebar.expander("⚙️ Advanced Settings", expanded=False):
+    st.caption("HSI Metrics Guide")
     st.markdown("""
-    점수 기반 전술 적합도 분석을 위해 다음 세 가지 지표를 사용합니다.
-    
-    1. T-Fit (Tactical): 전방 수비 및 압박 실행 능력과 카드/파울 리스크를 결합한 지표입니다.
-    2. P-Fit (Physical): 혹서기(여름) 활동량 유지 능력을 나타내는 지표입니다.
-    3. C-Fit (Cultural): 출생/성장 배경과 구단 연고지 간의 문화적 거리를 산출한 적응 지표입니다.
+    - **T-Fit**: Tactical Execution
+    - **P-Fit**: Physical Adaptation
+    - **C-Fit**: Cultural Fit (WVS)
     """)
-    st.caption("데이터 자동 매핑 상태: 정상")
-
-# 고급 매핑 설정 (기본적으로 숨김)
-with st.sidebar.expander("데이터 매핑 상세 설정"):
-    st.caption("필요 시 선수와 구단의 지역 코드를 수동으로 조정할 수 있습니다.")
+    st.markdown("---")
     
     # --- 선수 매핑 UI ---
-    st.markdown("---")
-    st.markdown("선수 성장 도시 정보")
+    st.markdown("**Player Origin**")
     try:
         pmap = pd.read_csv(PLAYER_CITY_MAP_PATH)
         prow_df = pmap[pmap["player_name_ko"] == selected_player_name]
@@ -1192,22 +1697,10 @@ with st.sidebar.expander("데이터 매핑 상세 설정"):
         pmap = pd.DataFrame(columns=["player_name_ko", "club_name_ko", "home_country_alpha", "home_loc_code", "home_city_label"])
         prow_val = {}
 
-    p_country_in = st.text_input(
-        "COUNTRY_ALPHA (선수)",
-        value=str(prow_val.get("home_country_alpha", "")).strip(),
-        key="p_home_country_alpha_in",
-    )
-    p_loc_in = st.text_input(
-        "LOC_CODE (선수)",
-        value=str(prow_val.get("home_loc_code", "")).strip(),
-        key="p_home_loc_code_in",
-    )
-    p_label_in = st.text_input(
-        "도시 라벨 (선수)",
-        value=str(prow_val.get("home_city_label", "")).strip(),
-        key="p_home_city_label_in",
-    )
-    if st.button("선수 성장도시 저장", key="save_player_city_btn"):
+    p_country_in = st.text_input("Country (Alpha-3)", value=str(prow_val.get("home_country_alpha", "")).strip(), key="p_home_country_alpha_in")
+    p_loc_in = st.text_input("Loc Code (WVS)", value=str(prow_val.get("home_loc_code", "")).strip(), key="p_home_loc_code_in")
+    
+    if st.button("Save Player Origin", key="save_player_city_btn"):
         pmap = pmap.copy()
         mask = (pmap["player_name_ko"] == selected_player_name)
         if "club_name_ko" in pmap.columns and selected_player_club:
@@ -1215,7 +1708,7 @@ with st.sidebar.expander("데이터 매핑 상세 설정"):
         
         if mask.any():
             pmap.loc[mask, ["home_country_alpha", "home_loc_code", "home_city_label"]] = [
-                p_country_in.strip().upper(), p_loc_in.strip(), p_label_in.strip()
+                p_country_in.strip().upper(), p_loc_in.strip(), ""
             ]
         else:
             new_row = {
@@ -1223,16 +1716,15 @@ with st.sidebar.expander("데이터 매핑 상세 설정"):
                 "club_name_ko": selected_player_club,
                 "home_country_alpha": p_country_in.strip().upper(),
                 "home_loc_code": p_loc_in.strip(),
-                "home_city_label": p_label_in.strip()
+                "home_city_label": ""
             }
             pmap = pd.concat([pmap, pd.DataFrame([new_row])], ignore_index=True)
         pmap.to_csv(PLAYER_CITY_MAP_PATH, index=False)
-        st.success("저장 완료!")
-        st.experimental_rerun()
+        st.success("Saved!")
+        st.rerun()
 
     # --- 팀 매핑 UI ---
-    st.markdown("---")
-    st.markdown("분석 도시 정보 (구단 연고지)")
+    st.markdown("**Club Location**")
     try:
         tmap = pd.read_csv(TEAM_CITY_MAP_PATH)
         trow_df = tmap[tmap["team_name_ko"] == client_team]
@@ -1241,53 +1733,32 @@ with st.sidebar.expander("데이터 매핑 상세 설정"):
         tmap = pd.DataFrame(columns=["team_name_ko", "host_country_alpha", "host_loc_code", "host_city_label"])
         trow_val = {}
 
-    t_country_in = st.text_input(
-        "COUNTRY_ALPHA (팀)",
-        value=str(trow_val.get("host_country_alpha", "KOR")).strip().upper(),
-        key="t_host_country_alpha_in",
-    )
-    t_loc_in = st.text_input(
-        "LOC_CODE (팀)",
-        value=str(trow_val.get("host_loc_code", "")).strip(),
-        key="t_host_loc_code_in",
-    )
-    t_label_in = st.text_input(
-        "도시 라벨 (팀)",
-        value=str(trow_val.get("host_city_label", "")).strip(),
-        key="t_host_city_label_in",
-    )
-    if st.button("분석도시 저장", key="save_team_city_btn"):
+    t_loc_in = st.text_input("Loc Code (Team)", value=str(trow_val.get("host_loc_code", "")).strip(), key="t_host_loc_code_in")
+    
+    if st.button("Save Club Location", key="save_team_city_btn"):
         tmap = tmap.copy()
         mask = tmap["team_name_ko"] == client_team
         if mask.any():
-            tmap.loc[mask, ["host_country_alpha", "host_loc_code", "host_city_label"]] = [
-                t_country_in.strip().upper(), t_loc_in.strip(), t_label_in.strip()
-            ]
+            tmap.loc[mask, ["host_country_alpha", "host_loc_code"]] = ["KOR", t_loc_in.strip()]
         else:
-            new_row = {"team_name_ko": client_team, "host_country_alpha": t_country_in.strip().upper(), "host_loc_code": t_loc_in.strip(), "host_city_label": t_label_in.strip()}
+            new_row = {"team_name_ko": client_team, "host_country_alpha": "KOR", "host_loc_code": t_loc_in.strip(), "host_city_label": ""}
             tmap = pd.concat([tmap, pd.DataFrame([new_row])], ignore_index=True)
         tmap.to_csv(TEAM_CITY_MAP_PATH, index=False)
-        st.success("저장 완료!")
-        st.experimental_rerun()
+        st.success("Saved!")
+        st.rerun()
 
-# 매핑 진행률 체크 (고급 설정 하단)
-with st.sidebar.expander("데이터 매핑 현황"):
-    try:
-        p_all = pd.read_csv(PLAYER_CITY_MAP_PATH)
-        t_all = pd.read_csv(TEAM_CITY_MAP_PATH)
-        def _f(x): return bool(str(x).strip()) and str(x).lower() != "nan"
-        st.write(f"선수 데이터: {p_all['home_loc_code'].apply(_f).sum()}/{len(p_all)}")
-        st.write(f"구단 데이터: {t_all['host_loc_code'].apply(_f).sum()}/{len(t_all)}")
-    except: pass
+st.sidebar.markdown('<div style="flex-grow: 1;"></div>', unsafe_allow_html=True)
+
+# Theme Toggle
+current_theme = st.session_state.theme_mode
+toggle_icon = "☀️ Light Mode" if current_theme == 'Dark' else "🌙 Dark Mode"
+if st.sidebar.button(toggle_icon, key="theme_toggle_btn"):
+    st.session_state.theme_mode = 'Light' if current_theme == 'Dark' else 'Dark'
+    st.rerun()
 
 # ============================================================
 # 메인 컨텐츠
 # ============================================================
-
-# PDF 버튼
-pdf_button = st.sidebar.button("PDF 분석 보고서 생성")
-
-st.sidebar.markdown("---")
 
 # 헤더
 st.title("K-Scout Adapt-Fit AI")
@@ -1327,18 +1798,16 @@ strengths, weaknesses = generate_analysis_summary(player_hsi_for_score, team_tem
 tab1, tab2, tab3 = st.tabs(["선수 분석", "팀 추천 랭킹", "상세 비교"])
 
 with tab1:
-    col1, col2 = st.columns([1, 1.5])
-
-    with col1:
-        # 선수 카드
-        st.subheader(f"{selected_player_name}")
-        st.caption(f"{get_position_korean(player_pos)} ({pos_group})")
-
-        # 선수 프로필
+    # --- 레이아웃 구조 개선 (Bento Grid Style) ---
+    # 상단: 프로필 카드 + 종합 점수 카드
+    col_profile, col_score = st.columns([1.2, 0.8])
+    
+    with col_profile:
+        # 프로필 정보 구성 (예외 처리 포함)
         en_name = ""
         nationality = ""
         try:
-            # 외국인 선수 상세 정보 우선 확인
+            # 외국인 선수 상세 정보
             if FOREIGN_PLAYERS_EXTENDED_PATH.exists():
                 foreign_prof = pd.read_csv(FOREIGN_PLAYERS_EXTENDED_PATH)
                 if not foreign_prof.empty and "player_name_ko" in foreign_prof.columns:
@@ -1348,7 +1817,7 @@ with tab1:
                         en_name = str(frow.get("english_full_name", "")).strip()
                         nationality = str(frow.get("nationality", "")).strip()
             
-            # 찾지 못했으면 기본 프로필 파일 확인
+            # 기본 프로필 파일
             if (not en_name or not nationality) and PLAYER_PROFILE_PATH.exists():
                 prof = pd.read_csv(PLAYER_PROFILE_PATH)
                 if not prof.empty:
@@ -1365,189 +1834,295 @@ with tab1:
                             en_name = str(prow.get("player_name_en_full", "")).strip()
                         if not nationality:
                             nationality = str(prow.get("nationality", "")).strip()
-            
-            # 정보 표시
-            if en_name and en_name.lower() not in ['nan', 'none', '']:
-                st.caption(f"영문 성명: {en_name}")
-            if nationality and nationality.lower() not in ['nan', 'none', '', 'foreign']:
-                st.caption(f"국적: {nationality}")
-        except Exception as e:
-            print(f"프로필 로드 실패: {e}")
+        except:
+            pass
 
-        st.markdown("---")
+        # HTML 카드 렌더링
+        st.markdown(f"""
+        <div class="metric-card" style="display: flex; align-items: center; gap: 24px; height: 100%;">
+            <div style="
+                width: 80px; height: 80px; 
+                background-color: {input_bg}; 
+                border-radius: 50%; 
+                display: flex; align-items: center; justify-content: center;
+                font-size: 2rem; font-weight: 700; color: {text_secondary};
+                border: 1px solid {border_color};
+                flex-shrink: 0;
+            ">
+                {selected_player_name[0] if selected_player_name else "?"}
+            </div>
+            <div>
+                <div style="font-size: 0.85rem; color: {text_secondary}; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em;">{get_position_korean(player_pos)} • {pos_group}</div>
+                <div style="font-size: 1.6rem; font-weight: 800; color: {text_primary}; margin-bottom: 8px; letter-spacing: -0.02em;">{selected_player_name}</div>
+                <div style="display: flex; gap: 12px; font-size: 0.85rem; color: {text_tertiary};">
+                    {'<span>' + en_name + '</span>' if 'en_name' in locals() and en_name and en_name != 'nan' else ''}
+                    {'<span style="opacity: 0.5;">|</span>' if 'en_name' in locals() and en_name and 'nationality' in locals() and nationality else ''}
+                    {'<span>' + nationality + '</span>' if 'nationality' in locals() and nationality and nationality != 'nan' else ''}
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
-        # 적합도 점수 표시
-        st.metric(
-            label="전술 적합도 종합 점수",
-            value=f"{adapt_fit_score:.1f}점",
-            delta=f"등급: {grade}",
-        )
-        st.info(f"{grade_desc}")
-
-        st.markdown("---")
-
-        # HSI 세부 점수
-        st.markdown("### HSI 세부 지표")
-
-        st.write(
-            f"T-Fit (Tactical): {player_hsi_for_score['t_fit_score']:.1f} "
-            f"(팀 평균: {team_template_for_score['t_fit_score']:.1f})"
-        )
-        st.write(
-            f"P-Fit (Physical): {player_hsi_for_score['p_fit_score']:.2f} "
-            f"(팀 평균: {team_template_for_score['p_fit_score']:.2f})"
-        )
-        st.write(
-            f"C-Fit (Cultural): {player_hsi_for_score['c_fit_score']:.3f} "
-            f"(팀 기준: {team_template_for_score['c_fit_score']:.3f})"
-        )
-
-        if c_fit_dynamic is None and cfit_reason:
-            st.caption(f"C-Fit(도시) 계산 불가: {cfit_reason} (임시값 사용)")
-        elif c_fit_dynamic is not None:
-            from_city = player_city_label if player_city_label else "선수 성장도시(미상)"
-            to_city = host_city_label if host_city_label else "분석도시(미상)"
-            st.caption(f"도시 기반 C-Fit: {from_city} → {to_city}")
-            try:
-                if isinstance(cfit_meta, dict):
-                    def _src_ko(v):
-                        m = {"city": "도시", "country": "국가", "global": "글로벌"}
-                        return m.get(str(v), str(v))
-                    hs = _src_ko(cfit_meta.get("home_source"))
-                    ts = _src_ko(cfit_meta.get("host_source"))
-                    st.caption(f"C-Fit 계산 단위: 선수={hs} / 분석={ts}")
-            except Exception:
-                pass
-
-    with col2:
-        # 레이더 차트
-        st.markdown(f"### {selected_player_name} vs {client_team} 비교")
-
-        categories = ["T-Fit (전술)", "P-Fit (환경)", "C-Fit (문화)"]
+    with col_score:
+        st.markdown(f"""
+        <div class="metric-card" style="text-align: center; padding: 20px; height: 100%; display: flex; flex-direction: column; justify-content: center;">
+            <div style="font-size: 0.85rem; color: {text_secondary}; margin-bottom: 4px;">ADAPT-FIT SCORE</div>
+            <div style="font-size: 3rem; font-weight: 800; color: {text_primary}; line-height: 1; letter-spacing: -0.03em;">
+                {adapt_fit_score:.0f}
+                <span style="font-size: 1rem; color: {text_tertiary}; font-weight: 500; margin-left: 2px;">/ 100</span>
+            </div>
+            <div style="font-size: 0.9rem; color: {grade_color if 'grade_color' in locals() else text_primary}; font-weight: 600; margin-top: 8px;">
+                {grade} Grade
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
         
-        # C-Fit은 0-1 범위이므로 100배하여 퍼센타일 스케일에 맞춤
+    # 하단: 2열 구조 (Metrics & Radar)
+    c1, c2 = st.columns([1, 1.2])
+    
+    with c1:
+        # ---------------------------------------------------------
+        # 1. HSI Metrics 카드
+        # ---------------------------------------------------------
+        def get_metric_row_html(label, value, avg_val, color_hex):
+            pct = min(100, max(0, value if value > 1 else value * 100))
+            val_str = f"{value:.1f}" if value > 1 else f"{value:.2f}"
+            avg_str = f"{avg_val:.1f}" if avg_val > 1 else f"{avg_val:.2f}"
+            # 들여쓰기 제거된 HTML 문자열
+            return f"""<div style="margin-bottom: 20px;">
+<div style="display: flex; justify-content: space-between; margin-bottom: 8px; align-items: baseline;">
+<span style="font-weight: 500; color: {text_primary}; font-size: 0.9rem;">{label}</span>
+<span style="color: {text_secondary}; font-size: 0.85rem;">
+<strong style="color: {text_primary};">{val_str}</strong> 
+<span style="opacity: 0.7;">vs {avg_str}</span>
+</span>
+</div>
+<div style="width: 100%; height: 6px; background-color: {input_bg}; border-radius: 3px; overflow: hidden;">
+<div style="width: {pct}%; height: 100%; background-color: {color_hex}; border-radius: 3px;"></div>
+</div>
+</div>"""
+
+        hsi_content = ""
+        hsi_content += get_metric_row_html("Tactical Fit", player_hsi_for_score['t_fit_score'], team_template_for_score['t_fit_score'], "#3B82F6")
+        hsi_content += get_metric_row_html("Physical Fit", player_hsi_for_score['p_fit_score'], team_template_for_score['p_fit_score'], "#10B981")
+        hsi_content += get_metric_row_html("Cultural Fit", player_hsi_for_score['c_fit_score'], team_template_for_score['c_fit_score'], "#F59E0B")
+
+        # 전체 카드 HTML (들여쓰기 제거)
+        st.markdown(f"""<div class="metric-card">
+<h4 style="margin: 0 0 24px 0; font-size: 1rem; color: {text_primary}; font-weight: 600;">HSI BREAKDOWN</h4>
+{hsi_content}
+</div>""", unsafe_allow_html=True)
+
+        # ---------------------------------------------------------
+        # 2. AI Analysis 카드
+        # ---------------------------------------------------------
+        ai_content = ""
+        if strengths:
+            for s in strengths:
+                ai_content += f"<div style='margin-bottom: 8px; font-size: 0.9rem; color: {text_secondary}; display: flex; gap: 8px;'><span style='color: #10B981;'>✓</span> <span>{s}</span></div>"
+        
+        if weaknesses:
+            ai_content += "<div style='height: 8px;'></div>"
+            for w in weaknesses:
+                ai_content += f"<div style='margin-bottom: 8px; font-size: 0.9rem; color: {text_secondary}; display: flex; gap: 8px;'><span style='color: #F59E0B;'>!</span> <span>{w}</span></div>"
+        
+        if not strengths and not weaknesses:
+             ai_content += f"<div style='color: {text_secondary}; font-size: 0.9rem;'>특이 사항 없음</div>"
+
+        st.markdown(f"""<div class="metric-card">
+<h4 style="margin: 0 0 16px 0; font-size: 1rem; color: {text_primary}; font-weight: 600;">AI INSIGHTS</h4>
+{ai_content}
+</div>""", unsafe_allow_html=True)
+
+    with c2:
+        # Radar Chart (별도 박스 없이 차트 자체를 CSS로 꾸밈)
+        categories = ["Tactical", "Physical", "Cultural"]
         player_r = [
-            player_hsi_for_score["t_fit_score"],  # 이미 퍼센타일 (0-100)
-            player_hsi_for_score["p_fit_score"],  # 이미 퍼센타일 (0-100)
-            player_hsi_for_score["c_fit_score"] * 100,  # 0-1 → 0-100 변환
+            player_hsi_for_score["t_fit_score"],
+            player_hsi_for_score["p_fit_score"],
+            player_hsi_for_score["c_fit_score"] * 100,
         ]
         team_r = [
             team_template_for_score["t_fit_score"],
             team_template_for_score["p_fit_score"],
-            team_template_for_score["c_fit_score"] * 100,  # 0-1 → 0-100 변환
+            team_template_for_score["c_fit_score"] * 100,
         ]
-        max_r = 100  # 퍼센타일 최대값
 
         fig = go.Figure()
-        # 선수 프로필 - 브랜드 핑크-오렌지
-        fig.add_trace(
-            go.Scatterpolar(
+        # Player Area
+        fig.add_trace(go.Scatterpolar(
                 r=player_r + [player_r[0]],
                 theta=categories + [categories[0]],
                 fill="toself",
-                name=f"{selected_player_name}",
-                line=dict(color="#FE3D67", width=3),
-                fillcolor="rgba(254, 61, 103, 0.3)",
-            )
-        )
-        # 팀 템플릿 - 브랜드 퍼플
-        fig.add_trace(
-            go.Scatterpolar(
+            name=selected_player_name,
+            line=dict(color=text_primary, width=2),
+            fillcolor=f"rgba(128, 128, 128, 0.2)"
+        ))
+        # Team Line
+        fig.add_trace(go.Scatterpolar(
                 r=team_r + [team_r[0]],
                 theta=categories + [categories[0]],
-                fill="toself",
-                name=f"{client_team} 템플릿",
-                line=dict(color="#872B95", width=2),
-                fillcolor="rgba(135, 43, 149, 0.2)",
-            )
-        )
+            fill="none",
+            name="Team Avg",
+            line=dict(color=text_secondary, width=1, dash='dot'),
+        ))
 
         fig.update_layout(
+            # 차트 제목을 내부에서 처리
+            title=dict(
+                text="SKILL RADAR",
+                x=0.05,
+                y=0.98,
+                xanchor='left',
+                yanchor='top',
+                font=dict(size=14, color=text_primary, family="Pretendard")
+            ),
             polar=dict(
-                radialaxis=dict(
-                    visible=True,
-                    range=[0, max_r],
-                    tickfont=dict(color="#FF7031", size=10),  # 브랜드 오렌지
-                    gridcolor="rgba(254, 61, 103, 0.2)",  # 브랜드 핑크
-                ),
-                angularaxis=dict(
-                    tickfont=dict(color="#ffffff", size=12),
-                    gridcolor="rgba(254, 61, 103, 0.2)",  # 브랜드 핑크
-                ),
-                bgcolor="rgba(0,0,0,0)",
+                radialaxis=dict(visible=True, range=[0, 100], tickfont=dict(color=tick_color, size=9), gridcolor=grid_color, linecolor=grid_color),
+                angularaxis=dict(tickfont=dict(color=text_primary, size=11, weight="bold"), gridcolor=grid_color, linecolor=grid_color),
+                bgcolor=polar_bgcolor,
             ),
             showlegend=True,
-            legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=1.1,
-                xanchor="center",
-                x=0.5,
-                font=dict(color="#ffffff"),
-            ),
-            paper_bgcolor="rgba(0,0,0,0)",
+            legend=dict(orientation="h", yanchor="bottom", y=0, xanchor="center", x=0.5, font=dict(color=text_primary)),
+            paper_bgcolor="rgba(0,0,0,0)", # 투명 배경 (CSS 카드가 뒤에 보임)
             plot_bgcolor="rgba(0,0,0,0)",
-            margin=dict(t=80, b=40, l=40, r=40),
-            height=400,
+            margin=dict(t=60, b=40, l=40, r=40), # 제목 공간 확보
+            height=500, # 높이 증가
         )
-        st.plotly_chart(fig)
-
-        # 강점/약점 분석
-        st.markdown("### AI 분석 요약")
-
-        st.markdown("전술적 강점")
-        if strengths:
-            for s in strengths:
-                st.success(f"• {s}")
-        else:
-            st.markdown("*특이 강점 항목 없음*")
-
-        st.markdown("보완 및 검토 사항")
-        if weaknesses:
-            for w in weaknesses:
-                st.warning(f"• {w}")
-        else:
-            st.markdown("*특이 보완 사항 없음*")
+        st.plotly_chart(fig, use_container_width=True)
 
 with tab2:
     st.markdown(f"### {client_team} 추천 외국인 선수 Top 10")
     st.markdown(f"*{client_team}의 전술 스타일에 적합한 외국인 선수 순위입니다.*")
     
     all_scores = get_all_player_scores(client_team, templates, hsi_df, foreigners_df)
-    
-    # 랭킹 테이블로 표시
-    ranking_data = []
-    for i, player in enumerate(all_scores[:10]):
-        rank_label = f"{i+1}위"
-        is_selected = " (분석 대상)" if player['name'] == selected_player_name else ""
-        ranking_data.append({
-            '순위': rank_label,
-            '선수명': f"{player['name']}{is_selected}",
-            '포지션': get_position_korean(player['position']),
-            '적합도': f"{player['score']:.1f}점",
-            '등급': player['grade']
-        })
-    
-    ranking_df = pd.DataFrame(ranking_data)
-    st.table(ranking_df)
+    top10 = all_scores[:10]
+
+    # Top 3 Highlight Cards (한 번에 판단)
+    top3 = top10[:3]
+    if top3:
+        cards_html = "<div class='rank-grid'>"
+        for i, p in enumerate(top3):
+            rank = i + 1
+            nm = p.get("name", "")
+            pos_ko = get_position_korean(p.get("position", ""))
+            score = float(p.get("score", 0))
+            grade = str(p.get("grade", ""))
+            gcolor = str(p.get("color", accent_color))
+            is_sel = (nm == selected_player_name)
+            sel_cls = " is-selected" if is_sel else ""
+            bar_w = max(0, min(100, score))
+
+            # grade-chip은 선수 grade 색상 기반으로 테두리/텍스트만 포인트
+            cards_html += f"""
+<div class="rank-card{sel_cls}">
+  <div class="rank-head">
+    <div class="rank-badge">{rank}위</div>
+    <div class="grade-chip" style="border-color:{gcolor}55;color:{gcolor};">{grade}</div>
+  </div>
+  <div class="rank-name">{nm}</div>
+  <div class="rank-meta">{pos_ko}</div>
+  <div class="score-line">
+    <div class="score-value">{score:.1f}<span class="score-unit">점</span></div>
+  </div>
+  <div class="score-bar"><span style="width:{bar_w:.1f}%;background:{gcolor};"></span></div>
+</div>
+"""
+        cards_html += "</div>"
+        st.markdown(cards_html, unsafe_allow_html=True)
+
+    # Full Top 10 List (스캔하기 쉬운 리스트)
+    if top10:
+        list_html = "<div class='rank-list'>"
+        for i, p in enumerate(top10):
+            rank = i + 1
+            nm = str(p.get("name", ""))
+            pos_ko = get_position_korean(p.get("position", ""))
+            score = float(p.get("score", 0))
+            grade = str(p.get("grade", ""))
+            gcolor = str(p.get("color", accent_color))
+            is_sel = (nm == selected_player_name)
+            row_cls = "rank-row is-selected" if is_sel else "rank-row"
+
+            list_html += f"""
+<div class="{row_cls}">
+  <div class="rank-rank">{rank}위</div>
+  <div class="rank-player">
+    <div class="nm">{nm}</div>
+    <div class="pos">{pos_ko}</div>
+  </div>
+  <div class="rank-score">{score:.1f}점</div>
+  <div class="rank-grade"><span class="grade-chip" style="border-color:{gcolor}55;color:{gcolor};">{grade}</span></div>
+</div>
+"""
+        list_html += "</div>"
+        st.markdown(list_html, unsafe_allow_html=True)
 
 with tab3:
     st.markdown("### 전체 선수 상세 데이터")
     
     all_scores = get_all_player_scores(client_team, templates, hsi_df, foreigners_df)
-    
-    df_display = pd.DataFrame([{
-        '순위': i+1,
-        '선수명': p['name'],
-        '포지션': get_position_korean(p['position']),
-        '적합도': f"{p['score']:.1f}",
-        '등급': p['grade'],
-        'T-Fit': f"{p['t_fit']:.1f}",
-        'P-Fit': f"{p['p_fit']:.2f}",
-        'C-Fit': f"{p['c_fit']:.3f}"
-    } for i, p in enumerate(all_scores)])
-    
-    st.dataframe(df_display)
+
+    def _to_pct(v: Any) -> float:
+        try:
+            fv = float(v)
+        except Exception:
+            return 0.0
+        pct = fv if fv > 1 else fv * 100.0
+        return max(0.0, min(100.0, pct))
+
+    if not all_scores:
+        st.info("표시할 데이터가 없습니다.")
+    else:
+        rows_html = "<div class='compare-list'>"
+        for i, p in enumerate(all_scores):
+            rank = i + 1
+            nm = str(p.get("name", ""))
+            pos_ko = get_position_korean(p.get("position", ""))
+            score = float(p.get("score", 0.0))
+            grade = str(p.get("grade", ""))
+            gcolor = str(p.get("color", accent_color))
+
+            t_val = float(p.get("t_fit", 0.0))
+            p_val = float(p.get("p_fit", 0.0))
+            c_val = float(p.get("c_fit", 0.0))
+
+            t_pct = _to_pct(t_val)
+            p_pct = _to_pct(p_val)
+            c_pct = _to_pct(c_val)
+
+            sel_cls = " is-selected" if nm == selected_player_name else ""
+            rows_html += f"""
+<div class="compare-row{sel_cls}">
+  <div class="compare-top">
+    <div class="compare-badge">{rank}위</div>
+    <div class="compare-center">
+      <div class="nm">{nm}</div>
+      <div class="pos">{pos_ko}</div>
+    </div>
+    <div class="compare-right">
+      <div class="score">{score:.1f}<span>점</span></div>
+      <div class="grade-chip" style="border-color:{gcolor}55;color:{gcolor};">{grade}</div>
+    </div>
+  </div>
+  <div class="compare-metrics">
+    <div class="metric-mini">
+      <div class="lbl"><span>T-Fit</span><strong>{t_val:.1f}</strong></div>
+      <div class="bar"><span style="width:{t_pct:.1f}%;background:#3B82F6;"></span></div>
+    </div>
+    <div class="metric-mini">
+      <div class="lbl"><span>P-Fit</span><strong>{p_val:.2f}</strong></div>
+      <div class="bar"><span style="width:{p_pct:.1f}%;background:#10B981;"></span></div>
+    </div>
+    <div class="metric-mini">
+      <div class="lbl"><span>C-Fit</span><strong>{c_val:.3f}</strong></div>
+      <div class="bar"><span style="width:{c_pct:.1f}%;background:#F59E0B;"></span></div>
+    </div>
+  </div>
+</div>
+"""
+        rows_html += "</div>"
+        st.markdown(rows_html, unsafe_allow_html=True)
 
 # ============================================================
 # PDF 생성
@@ -1589,7 +2164,7 @@ if pdf_button:
                 polar=dict(
                     radialaxis=dict(
                         visible=True,
-                        range=[0, max_r],
+                        range=[0, 100],
                         tickfont=dict(color='#333333', size=11),  # 검정 글씨
                         gridcolor='rgba(100, 100, 100, 0.3)'
                     ),
@@ -1683,8 +2258,8 @@ if pdf_button:
 st.markdown("---")
 st.markdown("""
 <div style="text-align: center; padding: 1.5rem; margin-top: 2rem;">
-    <p style="color: #FE3D67; font-weight: 600; margin: 0;">K-Scout Adapt-Fit AI • MVP Version</p>
-    <p style="color: #872B95; font-size: 0.75rem; margin: 0.5rem 0;">2024 K리그 데이터 기반 전술 적합도 분석 시스템</p>
-    <p style="color: #FF7031; font-size: 0.625rem; margin: 0;">© 2024 ANYONE COMPANY. All rights reserved.</p>
+    <p style="color: #9CA3AF; font-weight: 600; margin: 0;">K-Scout Adapt-Fit AI • MVP Version</p>
+    <p style="color: #A1A1AA; font-size: 0.75rem; margin: 0.5rem 0;">2024 K리그 데이터 기반 전술 적합도 분석 시스템</p>
+    <p style="color: #6B7280; font-size: 0.625rem; margin: 0;">© 2024 ANYONE COMPANY. All rights reserved.</p>
 </div>
 """, unsafe_allow_html=True)
